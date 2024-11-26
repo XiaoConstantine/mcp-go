@@ -2,8 +2,9 @@ package protocol
 
 import (
 	"encoding/json"
-	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestClientCapabilities(t *testing.T) {
@@ -36,9 +37,10 @@ func TestClientCapabilities(t *testing.T) {
 		t.Fatalf("Failed to unmarshal ClientCapabilities: %v", err)
 	}
 
-	// Verify all fields were preserved
-	if !reflect.DeepEqual(capabilities, decoded) {
-		t.Errorf("Decoded capabilities don't match original:\nGot: %+v\nWant: %+v", decoded, capabilities)
+	// Use go-cmp to compare the structs. This will automatically handle pointer
+	// comparisons and provide a detailed diff if values don't match
+	if diff := cmp.Diff(capabilities, decoded); diff != "" {
+		t.Errorf("Capabilities mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -78,9 +80,9 @@ func TestServerCapabilities(t *testing.T) {
 		t.Fatalf("Failed to unmarshal ServerCapabilities: %v", err)
 	}
 
-	// Verify all fields were preserved
-	if !reflect.DeepEqual(capabilities, decoded) {
-		t.Errorf("Decoded capabilities don't match original:\nGot: %+v\nWant: %+v", decoded, capabilities)
+	// Compare using go-cmp, which will show exactly what differs if the test fails
+	if diff := cmp.Diff(capabilities, decoded); diff != "" {
+		t.Errorf("Capabilities mismatch (-want +got):\n%s", diff)
 	}
 }
 
