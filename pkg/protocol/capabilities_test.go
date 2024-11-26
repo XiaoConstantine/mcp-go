@@ -7,7 +7,25 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+// SamplingConfig provides strong typing for sampling configuration
+type SamplingConfig struct {
+	MaxTokens int      `json:"maxTokens"`
+	Models    []string `json:"models"`
+}
+
 func TestClientCapabilities(t *testing.T) {
+	sampling := SamplingConfig{
+		MaxTokens: 1000,
+		Models:    []string{"model1", "model2"},
+	}
+	samplingJSON, err := json.Marshal(sampling)
+	if err != nil {
+		t.Fatalf("Failed to marshal sampling config: %v", err)
+	}
+	var samplingMap map[string]interface{}
+	if err := json.Unmarshal(samplingJSON, &samplingMap); err != nil {
+		t.Fatalf("Failed to unmarshal sampling config: %v", err)
+	}
 	// Create a comprehensive test case that covers all capability fields
 	capabilities := ClientCapabilities{
 		Experimental: map[string]map[string]interface{}{
@@ -19,10 +37,7 @@ func TestClientCapabilities(t *testing.T) {
 		Roots: &RootsCapability{
 			ListChanged: true,
 		},
-		Sampling: map[string]interface{}{
-			"maxTokens": 1000,
-			"models":    []string{"model1", "model2"},
-		},
+		Sampling: samplingMap,
 	}
 
 	// Test marshaling to JSON
