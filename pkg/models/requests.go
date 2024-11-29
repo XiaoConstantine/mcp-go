@@ -6,7 +6,7 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 )
 
-// InitializeRequest represents the initial request from client
+// InitializeRequest represents the initial request from client.
 type InitializeRequest struct {
 	Method string `json:"method"`
 	Params struct {
@@ -16,7 +16,7 @@ type InitializeRequest struct {
 	} `json:"params"`
 }
 
-// InitializeResult represents the server's response to initialization
+// InitializeResult represents the server's response to initialization.
 type InitializeResult struct {
 	Capabilities    protocol.ServerCapabilities `json:"capabilities"`
 	Instructions    string                      `json:"instructions,omitempty"`
@@ -24,7 +24,7 @@ type InitializeResult struct {
 	ServerInfo      Implementation              `json:"serverInfo"`
 }
 
-// ListResourcesRequest represents a request to list available resources
+// ListResourcesRequest represents a request to list available resources.
 type ListResourcesRequest struct {
 	Method string `json:"method"`
 	Params struct {
@@ -32,13 +32,13 @@ type ListResourcesRequest struct {
 	} `json:"params"`
 }
 
-// ListResourcesResult represents the response to a resources list request
+// ListResourcesResult represents the response to a resources list request.
 type ListResourcesResult struct {
 	Resources  []Resource `json:"resources"`
 	NextCursor *Cursor    `json:"nextCursor,omitempty"`
 }
 
-// CreateMessageRequest represents a request to sample from an LLM
+// CreateMessageRequest represents a request to sample from an LLM.
 type CreateMessageRequest struct {
 	Method string `json:"method"`
 	Params struct {
@@ -53,7 +53,7 @@ type CreateMessageRequest struct {
 	} `json:"params"`
 }
 
-// CreateMessageResult represents the response to a message creation request
+// CreateMessageResult represents the response to a message creation request.
 type CreateMessageResult struct {
 	Content    Content `json:"content"`
 	Model      string  `json:"model"`
@@ -61,9 +61,8 @@ type CreateMessageResult struct {
 	StopReason string  `json:"stopReason,omitempty"`
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for CreateMessageResult
+// UnmarshalJSON implements custom JSON unmarshaling for CreateMessageResult.
 func (r *CreateMessageResult) UnmarshalJSON(data []byte) error {
-	type Alias CreateMessageResult
 	var tmp struct {
 		Content    json.RawMessage `json:"content"`
 		Model      string          `json:"model"`
@@ -87,13 +86,13 @@ func (r *CreateMessageResult) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Root represents a root directory or file the server can operate on
+// Root represents a root directory or file the server can operate on.
 type Root struct {
 	URI  string `json:"uri"`
 	Name string `json:"name,omitempty"`
 }
 
-// ListRootsResult represents the response to a roots list request
+// ListRootsResult represents the response to a roots list request.
 type ListRootsResult struct {
 	Roots []Root `json:"roots"`
 }

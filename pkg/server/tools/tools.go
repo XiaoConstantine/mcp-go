@@ -8,20 +8,20 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/models"
 )
 
-// ToolHandler represents a handler for tool-related operations
+// ToolHandler represents a handler for tool-related operations.
 type ToolHandler interface {
 	ListTools() ([]models.Tool, error)
 	CallTool(name string, arguments map[string]interface{}) (*models.CallToolResult, error)
 }
 
-// ToolsManager manages tool registration and execution
+// ToolsManager manages tool registration and execution.
 type ToolsManager struct {
 	mu       sync.RWMutex
 	handlers map[string]ToolHandler
 	tools    []models.Tool
 }
 
-// NewToolsManager creates a new tools manager
+// NewToolsManager creates a new tools manager.
 func NewToolsManager() *ToolsManager {
 	return &ToolsManager{
 		handlers: make(map[string]ToolHandler),
@@ -29,7 +29,7 @@ func NewToolsManager() *ToolsManager {
 	}
 }
 
-// RegisterHandler registers a tool handler with a specific namespace
+// RegisterHandler registers a tool handler with a specific namespace.
 func (tm *ToolsManager) RegisterHandler(namespace string, handler ToolHandler) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
@@ -56,7 +56,7 @@ func (tm *ToolsManager) RegisterHandler(namespace string, handler ToolHandler) e
 	return nil
 }
 
-// ListTools returns all registered tools
+// ListTools returns all registered tools.
 func (tm *ToolsManager) ListTools() []models.Tool {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
@@ -66,7 +66,7 @@ func (tm *ToolsManager) ListTools() []models.Tool {
 	return toolsCopy
 }
 
-// CallTool calls a specific tool by name with the provided arguments
+// CallTool calls a specific tool by name with the provided arguments.
 func (tm *ToolsManager) CallTool(name string, arguments map[string]interface{}) (*models.CallToolResult, error) {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
@@ -87,7 +87,7 @@ func (tm *ToolsManager) CallTool(name string, arguments map[string]interface{}) 
 	return handler.CallTool(toolName, arguments)
 }
 
-// UnregisterHandler removes a tool handler and its tools
+// UnregisterHandler removes a tool handler and its tools.
 func (tm *ToolsManager) UnregisterHandler(namespace string) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()

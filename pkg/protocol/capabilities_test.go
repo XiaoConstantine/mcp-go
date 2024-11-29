@@ -7,7 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// SamplingConfig provides strong typing for sampling configuration
+// SamplingConfig provides strong typing for sampling configuration.
 type SamplingConfig struct {
 	MaxTokens int      `json:"maxTokens"`
 	Models    []string `json:"models"`

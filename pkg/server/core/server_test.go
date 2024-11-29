@@ -146,7 +146,7 @@ func TestResourceSubscriptions(t *testing.T) {
 			"uri": "` + resource.URI + `"
 		}`),
 	}
-	resp, err = server.HandleMessage(ctx, subMsg)
+	_, err = server.HandleMessage(ctx, subMsg)
 	require.NoError(t, err)
 
 	notifications := make(chan protocol.Message, 1)
@@ -168,7 +168,7 @@ func TestResourceSubscriptions(t *testing.T) {
 			"content": "updated content"
 		}`),
 	}
-	resp, err = server.HandleMessage(ctx, updateMsg)
+	_, err = server.HandleMessage(ctx, updateMsg)
 	require.NoError(t, err)
 
 	// Wait for notification
@@ -216,7 +216,7 @@ func TestResourceSubscriptions(t *testing.T) {
 			"uri": "` + resource.URI + `"
 		}`),
 	}
-	resp, err = server.HandleMessage(ctx, unsubMsg)
+	_, err = server.HandleMessage(ctx, unsubMsg)
 	require.NoError(t, err)
 }
 

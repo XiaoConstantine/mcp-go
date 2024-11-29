@@ -11,7 +11,7 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/models"
 )
 
-// Manager handles resource operations and maintains resource state
+// Manager handles resource operations and maintains resource state.
 type Manager struct {
 	mu          sync.RWMutex
 	resources   map[string]*models.Resource
@@ -21,7 +21,7 @@ type Manager struct {
 	subMu       sync.RWMutex
 }
 
-// NewManager creates a new resource manager instance
+// NewManager creates a new resource manager instance.
 func NewManager() *Manager {
 	return &Manager{
 		resources:   make(map[string]*models.Resource),
@@ -30,7 +30,7 @@ func NewManager() *Manager {
 	}
 }
 
-// AddRoot adds a new root path to the manager
+// AddRoot adds a new root path to the manager.
 func (m *Manager) AddRoot(root models.Root) error {
 	if !strings.HasPrefix(root.URI, "file://") {
 		return fmt.Errorf("only file:// URIs are supported for roots")
@@ -90,7 +90,7 @@ func (m *Manager) scanRoot(root models.Root) error {
 	})
 }
 
-// ListResources returns a list of available resources
+// ListResources returns a list of available resources.
 func (m *Manager) ListResources(ctx context.Context, cursor *models.Cursor) ([]models.Resource, *models.Cursor, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -102,7 +102,7 @@ func (m *Manager) ListResources(ctx context.Context, cursor *models.Cursor) ([]m
 	return resources, nil, nil
 }
 
-// ReadResource reads the contents of a specific resource
+// ReadResource reads the contents of a specific resource.
 func (m *Manager) ReadResource(ctx context.Context, uri string) ([]models.ResourceContent, error) {
 	m.mu.RLock()
 	resource, exists := m.resources[uri]
@@ -124,7 +124,7 @@ func (m *Manager) ReadResource(ctx context.Context, uri string) ([]models.Resour
 	return []models.ResourceContent{resourceContent}, nil
 }
 
-// UpdateResource updates the content of a resource and notifies subscribers
+// UpdateResource updates the content of a resource and notifies subscribers.
 func (m *Manager) UpdateResource(uri string, content string) error {
 	m.mu.Lock()
 	_, exists := m.resources[uri]
@@ -141,7 +141,7 @@ func (m *Manager) UpdateResource(uri string, content string) error {
 	return nil
 }
 
-// Subscribe adds a subscriber for resource updates
+// Subscribe adds a subscriber for resource updates.
 func (m *Manager) Subscribe(uri string) (*Subscription, error) {
 	m.mu.RLock()
 	_, exists := m.resources[uri]
@@ -166,7 +166,7 @@ func (m *Manager) Subscribe(uri string) (*Subscription, error) {
 	}, nil
 }
 
-// Subscription represents an active subscription to resource updates
+// Subscription represents an active subscription to resource updates.
 type Subscription struct {
 	ch      chan *models.ResourceUpdatedNotification
 	uri     string
@@ -176,7 +176,7 @@ type Subscription struct {
 	mu      sync.RWMutex
 }
 
-// Close closes the subscription and removes it from the manager
+// Close closes the subscription and removes it from the manager.
 func (s *Subscription) Close() {
 	s.once.Do(func() {
 		s.mu.Lock()
@@ -199,12 +199,12 @@ func (s *Subscription) Close() {
 	})
 }
 
-// Channel returns the notification channel for this subscription
+// Channel returns the notification channel for this subscription.
 func (s *Subscription) Channel() <-chan *models.ResourceUpdatedNotification {
 	return s.ch
 }
 
-// notifyResourceChanged notifies subscribers of resource changes
+// notifyResourceChanged notifies subscribers of resource changes.
 func (m *Manager) notifyResourceChanged(uri string) {
 	notification := &models.ResourceUpdatedNotification{
 		BaseNotification: models.BaseNotification{

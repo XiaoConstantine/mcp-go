@@ -6,7 +6,7 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/models"
 )
 
-// MockToolHandler implements ToolHandler for testing
+// MockToolHandler implements ToolHandler for testing.
 type MockToolHandler struct {
 	tools []models.Tool
 }

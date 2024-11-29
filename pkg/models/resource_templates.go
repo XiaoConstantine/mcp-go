@@ -7,7 +7,7 @@ type ListResourceTemplatesRequest struct {
 	Params *ListResourceTemplatesParams `json:"params,omitempty"`
 }
 
-// ListResourceTemplatesParams contains the parameters for the list templates request
+// ListResourceTemplatesParams contains the parameters for the list templates request.
 type ListResourceTemplatesParams struct {
 	Cursor *Cursor `json:"cursor,omitempty"`
 }

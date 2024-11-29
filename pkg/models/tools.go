@@ -15,7 +15,7 @@ type InputSchema struct {
 	Properties map[string]ParameterSchema  `json:"properties"`
 }
 
-// ParameterSchema defines the schema for a single parameter
+// ParameterSchema defines the schema for a single parameter.
 type ParameterSchema struct {
 	Type        string      `json:"type"`
 	Description string      `json:"description,omitempty"`
@@ -30,7 +30,7 @@ type ListToolsRequest struct {
 	Params *ListToolsParams `json:"params,omitempty"`
 }
 
-// ListToolsParams contains the parameters for the list tools request
+// ListToolsParams contains the parameters for the list tools request.
 type ListToolsParams struct {
 	Cursor *Cursor `json:"cursor,omitempty"`
 }
@@ -47,7 +47,7 @@ type CallToolRequest struct {
 	Params CallToolParams  `json:"params"`
 }
 
-// CallToolParams contains the parameters for the tool call
+// CallToolParams contains the parameters for the tool call.
 type CallToolParams struct {
 	Name      string                 `json:"name"`
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
@@ -59,7 +59,7 @@ type CallToolResult struct {
 	IsError bool     `json:"isError,omitempty"`
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for CallToolResult
+// UnmarshalJSON implements custom JSON unmarshaling for CallToolResult.
 func (r *CallToolResult) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Content []json.RawMessage `json:"content"`

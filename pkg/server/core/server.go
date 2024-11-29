@@ -11,7 +11,7 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/server/resource"
 )
 
-// Server represents the core MCP server, integrating various capabilities
+// Server represents the core MCP server, integrating various capabilities.
 type Server struct {
 	info             models.Implementation
 	version          string
@@ -23,7 +23,7 @@ type Server struct {
 	notificationChan chan protocol.Message
 }
 
-// NewServer creates a new MCP server instance with the specified implementation details
+// NewServer creates a new MCP server instance with the specified implementation details.
 func NewServer(info models.Implementation, version string) *Server {
 	return &Server{
 		info:             info,
@@ -46,14 +46,14 @@ func NewServer(info models.Implementation, version string) *Server {
 	}
 }
 
-// IsInitialized returns whether the server has been initialized
+// IsInitialized returns whether the server has been initialized.
 func (s *Server) IsInitialized() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.initialized
 }
 
-// HandleMessage processes incoming MCP messages and returns appropriate responses
+// HandleMessage processes incoming MCP messages and returns appropriate responses.
 func (s *Server) HandleMessage(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
 	if msg.Method == "initialize" {
 		return s.handleInitialize(ctx, msg)
@@ -264,12 +264,12 @@ func (s *Server) forwardResourceNotifications(sub *resource.Subscription) {
 	}
 }
 
-// AddRoot adds a new root path for resource management
+// AddRoot adds a new root path for resource management.
 func (s *Server) AddRoot(root models.Root) error {
 	return s.resourceManager.AddRoot(root)
 }
 
-// Notifications returns the channel for receiving server notifications
+// Notifications returns the channel for receiving server notifications.
 func (s *Server) Notifications() <-chan protocol.Message {
 	return s.notificationChan
 }

@@ -5,7 +5,7 @@ import (
     "fmt"
 )
 
-// Resource represents a known resource that the server can read
+// Resource represents a known resource that the server can read.
 type Resource struct {
     Annotated
     Name        string `json:"name"`
@@ -14,25 +14,25 @@ type Resource struct {
     MimeType    string `json:"mimeType,omitempty"`
 }
 
-// ResourceContents represents the base contents of a specific resource
+// ResourceContents represents the base contents of a specific resource.
 type ResourceContents struct {
     URI      string `json:"uri"`
     MimeType string `json:"mimeType,omitempty"`
 }
 
-// TextResourceContents represents text-based resource contents
+// TextResourceContents represents text-based resource contents.
 type TextResourceContents struct {
     ResourceContents
     Text string `json:"text"`
 }
 
-// BlobResourceContents represents binary resource contents
+// BlobResourceContents represents binary resource contents.
 type BlobResourceContents struct {
     ResourceContents
     Blob string `json:"blob"`
 }
 
-// ResourceTemplate represents a template for resources available on the server
+// ResourceTemplate represents a template for resources available on the server.
 type ResourceTemplate struct {
     Annotated
     Name        string `json:"name"`
@@ -41,14 +41,14 @@ type ResourceTemplate struct {
     MimeType    string `json:"mimeType,omitempty"`
 }
 
-// EmbeddedResource represents resource contents embedded in a prompt or tool call
+// EmbeddedResource represents resource contents embedded in a prompt or tool call.
 type EmbeddedResource struct {
     Annotated
     Type     string          `json:"type"`
     Resource ResourceContent `json:"resource"`
 }
 
-// ResourceContent represents either text or blob resource content
+// ResourceContent represents either text or blob resource content.
 type ResourceContent interface {
     isResourceContent()
 }
@@ -56,12 +56,12 @@ type ResourceContent interface {
 func (TextResourceContents) isResourceContent() {}
 func (BlobResourceContents) isResourceContent() {}
 
-// ReadResourceResult represents the response to a resource read request
+// ReadResourceResult represents the response to a resource read request.
 type ReadResourceResult struct {
     Contents []ResourceContent `json:"contents"`
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for ReadResourceResult
+// UnmarshalJSON implements custom JSON unmarshaling for ReadResourceResult.
 func (r *ReadResourceResult) UnmarshalJSON(data []byte) error {
     // First, unmarshal into a temporary structure with raw message for contents
     var raw struct {
