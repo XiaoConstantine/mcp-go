@@ -151,14 +151,13 @@ func (m *Manager) Subscribe(uri string) (*Subscription, error) {
 		return nil, fmt.Errorf("resource not found: %s", uri)
 	}
 
-	m.subMu.Lock()
-	defer m.subMu.Unlock()
-
 	ch := make(chan *models.ResourceUpdatedNotification, 10)
+	m.subMu.Lock()
 	if _, exists := m.subscribers[uri]; !exists {
 		m.subscribers[uri] = make(map[chan<- *models.ResourceUpdatedNotification]struct{})
 	}
 	m.subscribers[uri][ch] = struct{}{}
+	m.subMu.Unlock()
 
 	return &Subscription{
 		ch:      ch,
@@ -173,11 +172,21 @@ type Subscription struct {
 	uri     string
 	manager *Manager
 	once    sync.Once
+	closed  bool
+	mu      sync.RWMutex
 }
 
 // Close closes the subscription and removes it from the manager
 func (s *Subscription) Close() {
 	s.once.Do(func() {
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			return
+		}
+		s.closed = true
+		s.mu.Unlock()
+
 		s.manager.subMu.Lock()
 		if subscribers, exists := s.manager.subscribers[s.uri]; exists {
 			delete(subscribers, s.ch)
@@ -197,10 +206,6 @@ func (s *Subscription) Channel() <-chan *models.ResourceUpdatedNotification {
 
 // notifyResourceChanged notifies subscribers of resource changes
 func (m *Manager) notifyResourceChanged(uri string) {
-	m.subMu.RLock()
-	subscribers := m.subscribers[uri]
-	m.subMu.RUnlock()
-
 	notification := &models.ResourceUpdatedNotification{
 		BaseNotification: models.BaseNotification{
 			NotificationMethod: "notifications/resources/updated",
@@ -212,7 +217,16 @@ func (m *Manager) notifyResourceChanged(uri string) {
 		},
 	}
 
-	for ch := range subscribers {
+	m.subMu.RLock()
+	subscribers := make([]chan<- *models.ResourceUpdatedNotification, 0)
+	if subs, exists := m.subscribers[uri]; exists {
+		for ch := range subs {
+			subscribers = append(subscribers, ch)
+		}
+	}
+	m.subMu.RUnlock()
+
+	for _, ch := range subscribers {
 		select {
 		case ch <- notification:
 		default:
