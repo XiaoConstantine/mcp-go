@@ -70,6 +70,8 @@ func (s *Server) HandleMessage(ctx context.Context, msg *protocol.Message) (*pro
 		return s.handleListResources(ctx, msg)
 	case "resources/read":
 		return s.handleReadResource(ctx, msg)
+	case "resources/update":
+		return s.handleUpdateResource(ctx, msg)
 	case "resources/subscribe":
 		return s.handleResourceSubscribe(ctx, msg)
 	case "resources/unsubscribe":
@@ -180,6 +182,23 @@ func (s *Server) handleReadResource(ctx context.Context, msg *protocol.Message) 
 	return s.createResponse(msg.ID, result)
 }
 
+func (s *Server) handleUpdateResource(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
+	var params struct {
+		URI     string `json:"uri"`
+		Content string `json:"content"`
+	}
+
+	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+		return nil, fmt.Errorf("invalid update resource params: %w", err)
+	}
+
+	if err := s.resourceManager.UpdateResource(params.URI, params.Content); err != nil {
+		return nil, fmt.Errorf("failed to update resource: %w", err)
+	}
+
+	return s.createResponse(msg.ID, struct{}{})
+}
+
 func (s *Server) handleResourceSubscribe(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
 	var params struct {
 		URI string `json:"uri"`
@@ -213,7 +232,20 @@ func (s *Server) handleResourceUnsubscribe(ctx context.Context, msg *protocol.Me
 
 func (s *Server) forwardResourceNotifications(sub *resource.Subscription) {
 	for notification := range sub.Channel() {
-		notificationBytes, err := json.Marshal(notification)
+		// Create the full notification message structure
+		notifParams := struct {
+			Params struct {
+				URI string `json:"uri"`
+			} `json:"params"`
+		}{
+			Params: struct {
+				URI string `json:"uri"`
+			}{
+				URI: notification.Params.URI,
+			},
+		}
+
+		notificationBytes, err := json.Marshal(notifParams)
 		if err != nil {
 			continue
 		}
@@ -227,6 +259,7 @@ func (s *Server) forwardResourceNotifications(sub *resource.Subscription) {
 		select {
 		case s.notificationChan <- msg:
 		default:
+			// Channel is full, skip notification
 		}
 	}
 }

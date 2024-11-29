@@ -3,7 +3,6 @@ package resource
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +15,7 @@ import (
 type Manager struct {
 	mu          sync.RWMutex
 	resources   map[string]*models.Resource
+	contents    map[string]string // Store resource contents in memory
 	roots       []models.Root
 	subscribers map[string]map[chan<- *models.ResourceUpdatedNotification]struct{}
 	subMu       sync.RWMutex
@@ -25,6 +25,7 @@ type Manager struct {
 func NewManager() *Manager {
 	return &Manager{
 		resources:   make(map[string]*models.Resource),
+		contents:    make(map[string]string),
 		subscribers: make(map[string]map[chan<- *models.ResourceUpdatedNotification]struct{}),
 	}
 }
@@ -72,11 +73,18 @@ func (m *Manager) scanRoot(root models.Root) error {
 		uri := fmt.Sprintf("file://%s", filepath.Join(path, relPath))
 		mimeType := detectMimeType(filePath)
 
+		// Read initial content
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to read initial content: %w", err)
+		}
+
 		m.resources[uri] = &models.Resource{
 			Name:     filepath.Base(filePath),
 			URI:      uri,
 			MimeType: mimeType,
 		}
+		m.contents[uri] = string(data)
 
 		return nil
 	})
@@ -98,38 +106,39 @@ func (m *Manager) ListResources(ctx context.Context, cursor *models.Cursor) ([]m
 func (m *Manager) ReadResource(ctx context.Context, uri string) ([]models.ResourceContent, error) {
 	m.mu.RLock()
 	resource, exists := m.resources[uri]
+	content, contentExists := m.contents[uri]
 	m.mu.RUnlock()
 
-	if !exists {
+	if !exists || !contentExists {
 		return nil, fmt.Errorf("resource not found: %s", uri)
 	}
 
-	if !strings.HasPrefix(uri, "file://") {
-		return nil, fmt.Errorf("unsupported URI scheme: %s", uri)
-	}
-
-	path := strings.TrimPrefix(uri, "file://")
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open resource: %w", err)
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read resource: %w", err)
-	}
-
-	// For our test cases, we want to treat all files as text content
-	content := models.TextResourceContents{
+	resourceContent := models.TextResourceContents{
 		ResourceContents: models.ResourceContents{
 			URI:      resource.URI,
 			MimeType: resource.MimeType,
 		},
-		Text: string(data),
+		Text: content,
 	}
 
-	return []models.ResourceContent{content}, nil
+	return []models.ResourceContent{resourceContent}, nil
+}
+
+// UpdateResource updates the content of a resource and notifies subscribers
+func (m *Manager) UpdateResource(uri string, content string) error {
+	m.mu.Lock()
+	_, exists := m.resources[uri]
+	if !exists {
+		m.mu.Unlock()
+		return fmt.Errorf("resource not found: %s", uri)
+	}
+
+	m.contents[uri] = content
+	m.mu.Unlock()
+
+	// Notify subscribers about the change
+	m.notifyResourceChanged(uri)
+	return nil
 }
 
 // Subscribe adds a subscriber for resource updates
@@ -192,9 +201,16 @@ func (m *Manager) notifyResourceChanged(uri string) {
 	subscribers := m.subscribers[uri]
 	m.subMu.RUnlock()
 
-	notification := &models.ResourceUpdatedNotification{}
-	notification.NotificationMethod = "notifications/resources/updated"
-	notification.Params.URI = uri
+	notification := &models.ResourceUpdatedNotification{
+		BaseNotification: models.BaseNotification{
+			NotificationMethod: "notifications/resources/updated",
+		},
+		Params: struct {
+			URI string `json:"uri"`
+		}{
+			URI: uri,
+		},
+	}
 
 	for ch := range subscribers {
 		select {

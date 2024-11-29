@@ -78,7 +78,7 @@ func TestResourceOperations(t *testing.T) {
 	}
 	resp, err := server.HandleMessage(ctx, listMsg)
 	require.NoError(t, err)
-	
+
 	var listResult struct {
 		Resources []models.Resource `json:"resources"`
 	}
@@ -97,7 +97,7 @@ func TestResourceOperations(t *testing.T) {
 	}
 	resp, err = server.HandleMessage(ctx, readMsg)
 	require.NoError(t, err)
-	
+
 	var readResult models.ReadResourceResult
 	err = json.Unmarshal(resp.Result.(json.RawMessage), &readResult)
 	require.NoError(t, err)
@@ -118,6 +118,7 @@ func TestResourceSubscriptions(t *testing.T) {
 	err := server.AddRoot(root)
 	require.NoError(t, err)
 
+	// List resources to get a resource URI
 	listMsg := &protocol.Message{
 		JSONRPC: "2.0",
 		ID:      createRequestID(1),
@@ -136,6 +137,7 @@ func TestResourceSubscriptions(t *testing.T) {
 
 	resource := listResult.Resources[0]
 
+	// Subscribe to resource
 	subMsg := &protocol.Message{
 		JSONRPC: "2.0",
 		ID:      createRequestID(2),
@@ -156,25 +158,59 @@ func TestResourceSubscriptions(t *testing.T) {
 		}
 	}()
 
-	err = os.WriteFile(filepath.Join(tempDir, filepath.Base(resource.URI)), []byte("updated content"), 0644)
+	// Update the resource through the protocol
+	updateMsg := &protocol.Message{
+		JSONRPC: "2.0",
+		ID:      createRequestID(3),
+		Method:  "resources/update",
+		Params: json.RawMessage(`{
+			"uri": "` + resource.URI + `",
+			"content": "updated content"
+		}`),
+	}
+	resp, err = server.HandleMessage(ctx, updateMsg)
 	require.NoError(t, err)
 
+	// Wait for notification
 	select {
 	case notification := <-notifications:
 		assert.Equal(t, "notifications/resources/updated", notification.Method)
-		var params struct {
-			URI string `json:"uri"`
+
+		var notif struct {
+			Params struct {
+				URI string `json:"uri"`
+			} `json:"params"`
 		}
-		err = json.Unmarshal(notification.Params.(json.RawMessage), &params)
+		err = json.Unmarshal(notification.Params.(json.RawMessage), &notif)
 		require.NoError(t, err)
-		assert.Equal(t, resource.URI, params.URI)
+		assert.Equal(t, resource.URI, notif.Params.URI)
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for notification")
 	}
 
+	// Verify the resource was actually updated
+	readMsg := &protocol.Message{
+		JSONRPC: "2.0",
+		ID:      createRequestID(4),
+		Method:  "resources/read",
+		Params: json.RawMessage(`{
+			"uri": "` + resource.URI + `"
+		}`),
+	}
+	resp, err = server.HandleMessage(ctx, readMsg)
+	require.NoError(t, err)
+
+	var readResult models.ReadResourceResult
+	err = json.Unmarshal(resp.Result.(json.RawMessage), &readResult)
+	require.NoError(t, err)
+	assert.Len(t, readResult.Contents, 1)
+	textContent := readResult.Contents[0].(*models.TextResourceContents)
+	assert.Equal(t, "updated content", textContent.Text)
+
+	// Unsubscribe from resource
 	unsubMsg := &protocol.Message{
 		JSONRPC: "2.0",
-		ID:      createRequestID(3),
+		ID:      createRequestID(5),
 		Method:  "resources/unsubscribe",
 		Params: json.RawMessage(`{
 			"uri": "` + resource.URI + `"
@@ -233,8 +269,8 @@ func initializeServer(t *testing.T, server *Server) models.InitializeResult {
 	ctx := context.Background()
 	initParams := struct {
 		Capabilities    protocol.ClientCapabilities `json:"capabilities"`
-		ClientInfo     models.Implementation       `json:"clientInfo"`
-		ProtocolVersion string                     `json:"protocolVersion"`
+		ClientInfo      models.Implementation       `json:"clientInfo"`
+		ProtocolVersion string                      `json:"protocolVersion"`
 	}{
 		Capabilities: protocol.ClientCapabilities{},
 		ClientInfo: models.Implementation{
