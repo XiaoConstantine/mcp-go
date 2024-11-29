@@ -29,8 +29,8 @@ type ListPromptsRequest struct {
 // ListPromptsResult is the server's response containing available prompts.
 // It includes pagination support through nextCursor.
 type ListPromptsResult struct {
-	Prompts     []Prompt `json:"prompts"`
-	NextCursor  *Cursor  `json:"nextCursor,omitempty"`
+	Prompts    []Prompt `json:"prompts"`
+	NextCursor *Cursor  `json:"nextCursor,omitempty"`
 }
 
 // GetPromptRequest is used to retrieve a specific prompt by name.

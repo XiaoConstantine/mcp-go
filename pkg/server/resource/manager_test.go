@@ -73,7 +73,7 @@ func testSubscription(t *testing.T, manager *Manager, uri string) {
 	// Subscribe to resource
 	sub, err := manager.Subscribe(uri)
 	require.NoError(t, err)
-	
+
 	// Only call Close() once at the end
 	defer sub.Close()
 

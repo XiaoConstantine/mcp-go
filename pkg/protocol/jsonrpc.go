@@ -7,12 +7,12 @@ type RequestID interface{}
 
 // Message represents any JSON-RPC message.
 type Message struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      *RequestID      `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  interface{}     `json:"params,omitempty"`
-	Result  interface{}     `json:"result,omitempty"`
-	Error   *ErrorObject    `json:"error,omitempty"`
+	JSONRPC string       `json:"jsonrpc"`
+	ID      *RequestID   `json:"id,omitempty"`
+	Method  string       `json:"method,omitempty"`
+	Params  interface{}  `json:"params,omitempty"`
+	Result  interface{}  `json:"result,omitempty"`
+	Error   *ErrorObject `json:"error,omitempty"`
 }
 
 // ErrorObject represents an error response in JSON-RPC.

@@ -11,17 +11,17 @@ type Tool struct {
 
 // InputSchema defines the expected parameters for a tool using JSON Schema.
 type InputSchema struct {
-	Type       string                      `json:"type"`
-	Properties map[string]ParameterSchema  `json:"properties"`
+	Type       string                     `json:"type"`
+	Properties map[string]ParameterSchema `json:"properties"`
 }
 
 // ParameterSchema defines the schema for a single parameter.
 type ParameterSchema struct {
-	Type        string      `json:"type"`
-	Description string      `json:"description,omitempty"`
-	Required    bool        `json:"required,omitempty"`
-	Minimum     *float64    `json:"minimum,omitempty"`
-	Maximum     *float64    `json:"maximum,omitempty"`
+	Type        string   `json:"type"`
+	Description string   `json:"description,omitempty"`
+	Required    bool     `json:"required,omitempty"`
+	Minimum     *float64 `json:"minimum,omitempty"`
+	Maximum     *float64 `json:"maximum,omitempty"`
 }
 
 // ListToolsRequest is sent from the client to request available tools.
@@ -43,8 +43,8 @@ type ListToolsResult struct {
 
 // CallToolRequest is used by the client to invoke a tool.
 type CallToolRequest struct {
-	Method string          `json:"method"`
-	Params CallToolParams  `json:"params"`
+	Method string         `json:"method"`
+	Params CallToolParams `json:"params"`
 }
 
 // CallToolParams contains the parameters for the tool call.
@@ -56,14 +56,14 @@ type CallToolParams struct {
 // CallToolResult is the server's response to a tool call.
 type CallToolResult struct {
 	Content []Content `json:"content"`
-	IsError bool     `json:"isError,omitempty"`
+	IsError bool      `json:"isError,omitempty"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for CallToolResult.
 func (r *CallToolResult) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Content []json.RawMessage `json:"content"`
-		IsError bool             `json:"isError,omitempty"`
+		IsError bool              `json:"isError,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -71,7 +71,7 @@ func (r *CallToolResult) UnmarshalJSON(data []byte) error {
 
 	r.IsError = raw.IsError
 	r.Content = make([]Content, len(raw.Content))
-	
+
 	for i, contentData := range raw.Content {
 		content, err := UnmarshalContent(contentData)
 		if err != nil {
@@ -79,6 +79,6 @@ func (r *CallToolResult) UnmarshalJSON(data []byte) error {
 		}
 		r.Content[i] = content
 	}
-	
+
 	return nil
 }

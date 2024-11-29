@@ -45,7 +45,7 @@ func TestInitializeRequest(t *testing.T) {
 		t.Errorf("Method mismatch. Got %s, want %s", decoded.Method, request.Method)
 	}
 	if decoded.Params.ProtocolVersion != request.Params.ProtocolVersion {
-		t.Errorf("ProtocolVersion mismatch. Got %s, want %s", 
+		t.Errorf("ProtocolVersion mismatch. Got %s, want %s",
 			decoded.Params.ProtocolVersion, request.Params.ProtocolVersion)
 	}
 	if decoded.Params.ClientInfo.Name != request.Params.ClientInfo.Name {

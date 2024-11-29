@@ -3,7 +3,7 @@ package models
 // ListResourceTemplatesRequest is sent from the client to request available resource templates.
 // It supports pagination through an optional cursor.
 type ListResourceTemplatesRequest struct {
-	Method string                    `json:"method"`
+	Method string                       `json:"method"`
 	Params *ListResourceTemplatesParams `json:"params,omitempty"`
 }
 
@@ -16,5 +16,5 @@ type ListResourceTemplatesParams struct {
 // It includes pagination support through nextCursor.
 type ListResourceTemplatesResult struct {
 	ResourceTemplates []ResourceTemplate `json:"resourceTemplates"`
-	NextCursor       *Cursor            `json:"nextCursor,omitempty"`
+	NextCursor        *Cursor            `json:"nextCursor,omitempty"`
 }
