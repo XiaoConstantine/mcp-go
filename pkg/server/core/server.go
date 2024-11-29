@@ -1,4 +1,3 @@
-// Package core provides the central server implementation for the Model Context Protocol
 package core
 
 import (
@@ -100,8 +99,8 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 	s.initOnce.Do(func() {
 		var params struct {
 			Capabilities    protocol.ClientCapabilities `json:"capabilities"`
-			ClientInfo     models.Implementation       `json:"clientInfo"`
-			ProtocolVersion string                     `json:"protocolVersion"`
+			ClientInfo      models.Implementation       `json:"clientInfo"`
+			ProtocolVersion string                      `json:"protocolVersion"`
 		}
 
 		if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
