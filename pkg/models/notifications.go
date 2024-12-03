@@ -81,9 +81,9 @@ type ToolListChangedNotification struct {
 type LoggingMessageNotification struct {
 	BaseNotification
 	Params struct {
-		Level  LoggingLevel `json:"level"`
-		Data   interface{}  `json:"data"`
-		Logger string       `json:"logger,omitempty"`
+		Level  LogLevel    `json:"level"`
+		Data   interface{} `json:"data"`
+		Logger string      `json:"logger,omitempty"`
 	} `json:"params"`
 }
 
@@ -149,7 +149,7 @@ func NewToolListChangedNotification() *ToolListChangedNotification {
 }
 
 // NewLoggingMessageNotification creates a new logging message notification with the specified details.
-func NewLoggingMessageNotification(level LoggingLevel, data interface{}, logger string) *LoggingMessageNotification {
+func NewLoggingMessageNotification(level LogLevel, data interface{}, logger string) *LoggingMessageNotification {
 	n := &LoggingMessageNotification{}
 	n.NotificationMethod = "notifications/message"
 	n.Params.Level = level

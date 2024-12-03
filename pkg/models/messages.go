@@ -12,7 +12,7 @@ type Content interface {
 
 // TextContent represents text provided to or from an LLM.
 type TextContent struct {
-	Annotated
+	BaseAnnotated
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
@@ -23,7 +23,7 @@ func (t TextContent) ContentType() string {
 
 // ImageContent represents an image provided to or from an LLM.
 type ImageContent struct {
-	Annotated
+	BaseAnnotated
 	Type     string `json:"type"`
 	Data     string `json:"data"`
 	MimeType string `json:"mimeType"`

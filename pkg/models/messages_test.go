@@ -8,7 +8,7 @@ import (
 func TestTextContent(t *testing.T) {
 	priority := 0.5
 	textContent := TextContent{
-		Annotated: Annotated{
+		BaseAnnotated: BaseAnnotated{
 			Annotations: &Annotations{
 				Audience: []Role{RoleAssistant},
 				Priority: &priority,

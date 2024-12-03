@@ -7,7 +7,7 @@ import (
 
 // Resource represents a known resource that the server can read.
 type Resource struct {
-	Annotated
+	BaseAnnotated
 	Name        string `json:"name"`
 	URI         string `json:"uri"`
 	Description string `json:"description,omitempty"`
@@ -34,7 +34,7 @@ type BlobResourceContents struct {
 
 // ResourceTemplate represents a template for resources available on the server.
 type ResourceTemplate struct {
-	Annotated
+	BaseAnnotated
 	Name        string `json:"name"`
 	URITemplate string `json:"uriTemplate"`
 	Description string `json:"description,omitempty"`
@@ -43,7 +43,7 @@ type ResourceTemplate struct {
 
 // EmbeddedResource represents resource contents embedded in a prompt or tool call.
 type EmbeddedResource struct {
-	Annotated
+	BaseAnnotated
 	Type     string          `json:"type"`
 	Resource ResourceContent `json:"resource"`
 }

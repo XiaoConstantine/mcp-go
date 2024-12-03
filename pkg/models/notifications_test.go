@@ -73,7 +73,7 @@ func TestProgressNotification(t *testing.T) {
 
 func TestLoggingMessageNotification(t *testing.T) {
 	// Test creating a logging message notification
-	level := LoggingLevelInfo
+	level := LogLevelInfo
 	data := "Test log message"
 	logger := "test-logger"
 	notification := NewLoggingMessageNotification(level, data, logger)
@@ -99,7 +99,7 @@ func TestLoggingMessageNotification(t *testing.T) {
 		"code":    404,
 		"message": "Not found",
 	}
-	notificationStructured := NewLoggingMessageNotification(LoggingLevelError, structuredData, logger)
+	notificationStructured := NewLoggingMessageNotification(LogLevelError, structuredData, logger)
 	if diff := cmp.Diff(notificationStructured.Params.Data, structuredData); diff != "" {
 		t.Errorf("Capabilities mismatch (-want +got):\n%s", diff)
 	}
