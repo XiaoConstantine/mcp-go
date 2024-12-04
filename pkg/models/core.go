@@ -5,22 +5,22 @@ import (
 	"fmt"
 )
 
-// Role represents the sender or recipient in a conversation
+// Role represents the sender or recipient in a conversation.
 type Role string
 
 const (
-	// RoleAssistant represents an AI assistant in the conversation
+	// RoleAssistant represents an AI assistant in the conversation.
 	RoleAssistant Role = "assistant"
-	// RoleUser represents a human user in the conversation
+	// RoleUser represents a human user in the conversation.
 	RoleUser Role = "user"
 )
 
-// String returns the string representation of the Role
+// String returns the string representation of the Role.
 func (r Role) String() string {
 	return string(r)
 }
 
-// IsValid checks if the Role is a valid value
+// IsValid checks if the Role is a valid value.
 func (r Role) IsValid() bool {
 	switch r {
 	case RoleAssistant, RoleUser:
@@ -30,13 +30,13 @@ func (r Role) IsValid() bool {
 	}
 }
 
-// Implementation describes the name and version of an MCP implementation
+// Implementation describes the name and version of an MCP implementation.
 type Implementation struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 }
 
-// Validate performs validation on Implementation fields
+// Validate performs validation on Implementation fields.
 func (i Implementation) Validate() error {
 	if i.Name == "" {
 		return fmt.Errorf("implementation name cannot be empty")
@@ -47,19 +47,19 @@ func (i Implementation) Validate() error {
 	return nil
 }
 
-// Annotatable defines the interface for objects that can have annotations
+// Annotatable defines the interface for objects that can have annotations.
 type Annotatable interface {
 	GetAnnotations() *Annotations
 	SetAnnotations(*Annotations)
 }
 
-// Annotations provides metadata about how objects should be used or displayed
+// Annotations provides metadata about how objects should be used or displayed.
 type Annotations struct {
 	Audience []Role    `json:"audience,omitempty"`
 	Priority *float64 `json:"priority,omitempty"`
 }
 
-// Validate ensures all annotations are valid
+// Validate ensures all annotations are valid.
 func (a *Annotations) Validate() error {
 	if a == nil {
 		return nil
@@ -80,22 +80,22 @@ func (a *Annotations) Validate() error {
 	return nil
 }
 
-// BaseAnnotated provides a base implementation of Annotatable
+// BaseAnnotated provides a base implementation of Annotatable.
 type BaseAnnotated struct {
 	Annotations *Annotations `json:"annotations,omitempty"`
 }
 
-// GetAnnotations implements Annotatable
+// GetAnnotations implements Annotatable.
 func (b *BaseAnnotated) GetAnnotations() *Annotations {
 	return b.Annotations
 }
 
-// SetAnnotations implements Annotatable
+// SetAnnotations implements Annotatable.
 func (b *BaseAnnotated) SetAnnotations(a *Annotations) {
 	b.Annotations = a
 }
 
-// LogLevel represents the severity of a log message
+// LogLevel represents the severity of a log message.
 type LogLevel string
 
 const (
@@ -109,7 +109,7 @@ const (
 	LogLevelDebug     LogLevel = "debug"
 )
 
-// IsValid checks if the LogLevel is a valid value
+// IsValid checks if the LogLevel is a valid value.
 func (l LogLevel) IsValid() bool {
 	switch l {
 	case LogLevelEmergency, LogLevelAlert, LogLevelCritical,
@@ -121,17 +121,17 @@ func (l LogLevel) IsValid() bool {
 	}
 }
 
-// String returns the string representation of the LogLevel
+// String returns the string representation of the LogLevel.
 func (l LogLevel) String() string {
 	return string(l)
 }
 
-// ModelHint provides hints for model selection
+// ModelHint provides hints for model selection.
 type ModelHint struct {
 	Name string `json:"name,omitempty"`
 }
 
-// Validate ensures the ModelHint is valid
+// Validate ensures the ModelHint is valid.
 func (m ModelHint) Validate() error {
 	if m.Name == "" {
 		return fmt.Errorf("model hint name cannot be empty")
@@ -139,7 +139,7 @@ func (m ModelHint) Validate() error {
 	return nil
 }
 
-// ModelPreferences expresses priorities for model selection during sampling
+// ModelPreferences expresses priorities for model selection during sampling.
 type ModelPreferences struct {
 	CostPriority         *float64    `json:"costPriority,omitempty"`
 	SpeedPriority        *float64    `json:"speedPriority,omitempty"`
@@ -147,7 +147,7 @@ type ModelPreferences struct {
 	Hints                []ModelHint `json:"hints,omitempty"`
 }
 
-// Validate ensures all ModelPreferences are valid
+// Validate ensures all ModelPreferences are valid.
 func (m *ModelPreferences) Validate() error {
 	if m == nil {
 		return nil
@@ -180,5 +180,5 @@ func (m *ModelPreferences) Validate() error {
 	return nil
 }
 
-// Cursor represents an opaque token used for pagination
+// Cursor represents an opaque token used for pagination.
 type Cursor string
