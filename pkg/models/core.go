@@ -55,7 +55,7 @@ type Annotatable interface {
 
 // Annotations provides metadata about how objects should be used or displayed.
 type Annotations struct {
-	Audience []Role    `json:"audience,omitempty"`
+	Audience []Role   `json:"audience,omitempty"`
 	Priority *float64 `json:"priority,omitempty"`
 }
 

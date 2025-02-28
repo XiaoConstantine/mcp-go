@@ -31,18 +31,18 @@ func TestImplementation_Validate(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "Valid implementation",
-			impl: Implementation{Name: "test", Version: "1.0.0"},
+			name:    "Valid implementation",
+			impl:    Implementation{Name: "test", Version: "1.0.0"},
 			wantErr: false,
 		},
 		{
-			name: "Missing name",
-			impl: Implementation{Version: "1.0.0"},
+			name:    "Missing name",
+			impl:    Implementation{Version: "1.0.0"},
 			wantErr: true,
 		},
 		{
-			name: "Missing version",
-			impl: Implementation{Name: "test"},
+			name:    "Missing version",
+			impl:    Implementation{Name: "test"},
 			wantErr: true,
 		},
 	}
@@ -89,8 +89,8 @@ func TestAnnotations_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "Nil annotations",
-			ann:  nil,
+			name:    "Nil annotations",
+			ann:     nil,
 			wantErr: false,
 		},
 	}
@@ -117,10 +117,10 @@ func TestModelPreferences_Validate(t *testing.T) {
 		{
 			name: "Valid preferences",
 			mp: &ModelPreferences{
-				CostPriority: &validPriority,
-				SpeedPriority: &validPriority,
+				CostPriority:         &validPriority,
+				SpeedPriority:        &validPriority,
 				IntelligencePriority: &validPriority,
-				Hints: []ModelHint{{Name: "test"}},
+				Hints:                []ModelHint{{Name: "test"}},
 			},
 			wantErr: false,
 		},
@@ -139,8 +139,8 @@ func TestModelPreferences_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "Nil preferences",
-			mp:   nil,
+			name:    "Nil preferences",
+			mp:      nil,
 			wantErr: false,
 		},
 	}
