@@ -15,6 +15,11 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/server/tools"
 )
 
+type MCPServer interface {
+	HandleMessage(ctx context.Context, msg *protocol.Message) (*protocol.Message, error)
+	Notifications() <-chan protocol.Message
+}
+
 // Server represents the core MCP server, integrating various capabilities.
 type Server struct {
 	info             models.Implementation
