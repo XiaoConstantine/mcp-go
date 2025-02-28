@@ -4,150 +4,189 @@ import (
 	"testing"
 
 	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-// MockToolHandler implements ToolHandler for testing.
+// MockToolHandler implements the ToolHandler interface for testing.
 type MockToolHandler struct {
-	tools []models.Tool
+	mock.Mock
 }
 
-func (h *MockToolHandler) ListTools() ([]models.Tool, error) {
-	return h.tools, nil
+func (m *MockToolHandler) ListTools() ([]models.Tool, error) {
+	args := m.Called()
+	return args.Get(0).([]models.Tool), args.Error(1)
 }
 
-func (h *MockToolHandler) CallTool(name string, arguments map[string]interface{}) (*models.CallToolResult, error) {
-	return &models.CallToolResult{
-		Content: []models.Content{&models.TextContent{
-			Type: "text",
-			Text: "mock result",
-		}},
-	}, nil
+func (m *MockToolHandler) CallTool(name string, arguments map[string]interface{}) (*models.CallToolResult, error) {
+	args := m.Called(name, arguments)
+	if res := args.Get(0); res != nil {
+		return res.(*models.CallToolResult), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
-func TestToolsManager_RegisterHandler(t *testing.T) {
-	tm := NewToolsManager()
-	mockHandler := &MockToolHandler{
-		tools: []models.Tool{
-			{
-				Name:        "test",
-				Description: "Test tool",
+func TestNewToolsManager(t *testing.T) {
+	manager := NewToolsManager()
+	assert.NotNil(t, manager)
+	assert.Empty(t, manager.handlers)
+	assert.Empty(t, manager.tools)
+}
+
+func TestRegisterHandler(t *testing.T) {
+	manager := NewToolsManager()
+
+	// Create mock handler with tools
+	handler := new(MockToolHandler)
+	tools := []models.Tool{
+		{
+			Name:        "testTool",
+			Description: "A test tool",
+			InputSchema: models.InputSchema{
+				Type: "object",
 			},
 		},
 	}
+	handler.On("ListTools").Return(tools, nil)
 
-	// Test registering a handler
-	err := tm.RegisterHandler("mock", mockHandler)
-	if err != nil {
-		t.Errorf("Failed to register handler: %v", err)
-	}
+	// Register handler
+	err := manager.RegisterHandler("test", handler)
+	require.NoError(t, err)
 
-	// Test duplicate registration
-	err = tm.RegisterHandler("mock", mockHandler)
-	if err == nil {
-		t.Error("Expected error on duplicate registration")
-	}
+	// Verify handler was registered
+	assert.Contains(t, manager.handlers, "test")
 
-	// Verify tool name prefixing
-	tools := tm.ListTools()
-	if len(tools) != 1 {
-		t.Errorf("Expected 1 tool, got %d", len(tools))
-	}
-	if tools[0].Name != "mock_test" {
-		t.Errorf("Expected tool name to be prefixed, got %s", tools[0].Name)
-	}
+	// Verify tools were added with namespace prefix
+	assert.Len(t, manager.tools, 1)
+	assert.Equal(t, "test_testTool", manager.tools[0].Name)
+
+	// Verify ListTools returns the registered tools
+	listedTools := manager.ListTools()
+	assert.Len(t, listedTools, 1)
+	assert.Equal(t, "test_testTool", listedTools[0].Name)
+
+	handler.AssertExpectations(t)
 }
 
-func TestToolsManager_ListTools(t *testing.T) {
-	tm := NewToolsManager()
-	mockHandler := &MockToolHandler{
-		tools: []models.Tool{
-			{Name: "tool1"},
-			{Name: "tool2"},
-		},
-	}
+func TestRegisterHandlerAlreadyExists(t *testing.T) {
+	manager := NewToolsManager()
 
-	err := tm.RegisterHandler("mock", mockHandler)
-	if err != nil {
-		t.Errorf("Failed to register handler: %v", err)
-	}
+	// Create mock handlers
+	handler1 := new(MockToolHandler)
+	handler2 := new(MockToolHandler)
 
-	tools := tm.ListTools()
-	if len(tools) != 2 {
-		t.Errorf("Expected 2 tools, got %d", len(tools))
-	}
+	tools := []models.Tool{{Name: "tool1"}}
+	handler1.On("ListTools").Return(tools, nil)
 
-	// Verify tool list is a copy
-	tools[0].Name = "modified"
-	originalTools := tm.ListTools()
-	if originalTools[0].Name == "modified" {
-		t.Error("Tool list should be a copy")
-	}
+	// Register first handler
+	err := manager.RegisterHandler("test", handler1)
+	require.NoError(t, err)
+
+	// Try to register second handler with same namespace
+	err = manager.RegisterHandler("test", handler2)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already registered")
+
+	handler1.AssertExpectations(t)
 }
 
-func TestToolsManager_CallTool(t *testing.T) {
-	tm := NewToolsManager()
-	mockHandler := &MockToolHandler{
-		tools: []models.Tool{
-			{Name: "test"},
+func TestCallTool(t *testing.T) {
+	manager := NewToolsManager()
+
+	// Create mock handler
+	handler := new(MockToolHandler)
+	tools := []models.Tool{
+		{
+			Name:        "testTool",
+			Description: "A test tool",
+			InputSchema: models.InputSchema{
+				Type: "object",
+			},
 		},
 	}
+	handler.On("ListTools").Return(tools, nil)
 
-	err := tm.RegisterHandler("mock", mockHandler)
-	if err != nil {
-		t.Errorf("Failed to register handler: %v", err)
+	// Expected result for tool call
+	textContent := models.TextContent{
+		Type: "text",
+		Text: "Tool result",
 	}
-
-	// Test valid call
-	result, err := tm.CallTool("mock_test", map[string]interface{}{"arg": "value"})
-	if err != nil {
-		t.Errorf("Failed to call tool: %v", err)
-	}
-	if result == nil {
-		t.Error("Expected result, got nil")
+	expectedResult := &models.CallToolResult{
+		Content: []models.Content{textContent},
+		IsError: false,
 	}
 
-	// Test invalid tool name format
-	_, err = tm.CallTool("invalidname", nil)
-	if err == nil {
-		t.Error("Expected error for invalid tool name format")
-	}
+	// Setup expectations for CallTool
+	handler.On("CallTool", "testTool", mock.Anything).Return(expectedResult, nil)
 
-	// Test non-existent namespace
-	_, err = tm.CallTool("nonexistent_test", nil)
-	if err == nil {
-		t.Error("Expected error for non-existent namespace")
-	}
+	// Register handler
+	err := manager.RegisterHandler("test", handler)
+	require.NoError(t, err)
+
+	// Call tool with arguments
+	args := map[string]interface{}{"key": "value"}
+	result, err := manager.CallTool("test_testTool", args)
+	require.NoError(t, err)
+
+	// Verify result
+	assert.Equal(t, expectedResult, result)
+
+	handler.AssertExpectations(t)
 }
 
-func TestToolsManager_UnregisterHandler(t *testing.T) {
-	tm := NewToolsManager()
-	mockHandler := &MockToolHandler{
-		tools: []models.Tool{
-			{Name: "test1"},
-			{Name: "test2"},
-		},
-	}
+func TestCallToolInvalidFormat(t *testing.T) {
+	manager := NewToolsManager()
 
-	// Register and then unregister handler
-	err := tm.RegisterHandler("mock", mockHandler)
-	if err != nil {
-		t.Errorf("Failed to register handler: %v", err)
-	}
+	// Try to call tool with invalid name format (no namespace separator)
+	_, err := manager.CallTool("invalid", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid tool name format")
+}
 
-	err = tm.UnregisterHandler("mock")
-	if err != nil {
-		t.Errorf("Failed to unregister handler: %v", err)
-	}
+func TestCallToolNamespaceNotFound(t *testing.T) {
+	manager := NewToolsManager()
 
-	// Verify tools were removed
-	tools := tm.ListTools()
-	if len(tools) != 0 {
-		t.Errorf("Expected 0 tools after unregistering, got %d", len(tools))
-	}
+	// Try to call tool with nonexistent namespace
+	_, err := manager.CallTool("nonexistent_tool", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no handler registered for namespace")
+}
 
-	// Test unregistering non-existent handler
-	err = tm.UnregisterHandler("nonexistent")
-	if err == nil {
-		t.Error("Expected error when unregistering non-existent handler")
+func TestUnregisterHandler(t *testing.T) {
+	manager := NewToolsManager()
+
+	// Create mock handler with tools
+	handler := new(MockToolHandler)
+	tools := []models.Tool{
+		{Name: "tool1"},
+		{Name: "tool2"},
 	}
+	handler.On("ListTools").Return(tools, nil)
+
+	// Register handler
+	err := manager.RegisterHandler("test", handler)
+	require.NoError(t, err)
+
+	// Verify tools were added
+	assert.Len(t, manager.tools, 2)
+
+	// Unregister handler
+	err = manager.UnregisterHandler("test")
+	require.NoError(t, err)
+
+	// Verify handler and tools were removed
+	assert.NotContains(t, manager.handlers, "test")
+	assert.Empty(t, manager.tools)
+
+	handler.AssertExpectations(t)
+}
+
+func TestUnregisterHandlerNotFound(t *testing.T) {
+	manager := NewToolsManager()
+
+	// Try to unregister nonexistent handler
+	err := manager.UnregisterHandler("nonexistent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no handler registered")
 }

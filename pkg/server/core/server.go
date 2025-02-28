@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/XiaoConstantine/mcp-go/pkg/models"
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
+	"github.com/XiaoConstantine/mcp-go/pkg/server/logging"
+	"github.com/XiaoConstantine/mcp-go/pkg/server/prompt"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/resource"
+	"github.com/XiaoConstantine/mcp-go/pkg/server/tools"
 )
 
 // Server represents the core MCP server, integrating various capabilities.
@@ -21,14 +25,21 @@ type Server struct {
 	resourceManager  *resource.Manager
 	capabilities     protocol.ServerCapabilities
 	notificationChan chan protocol.Message
+
+	toolsManager  *tools.ToolsManager
+	promptManager *prompt.Manager
+	logManager    *logging.Manager
 }
 
 // NewServer creates a new MCP server instance with the specified implementation details.
 func NewServer(info models.Implementation, version string) *Server {
-	return &Server{
+	server := &Server{
 		info:             info,
 		version:          version,
 		resourceManager:  resource.NewManager(),
+		toolsManager:     tools.NewToolsManager(),
+		promptManager:    prompt.NewManager(),
+		logManager:       logging.NewManager(),
 		notificationChan: make(chan protocol.Message, 100),
 		capabilities: protocol.ServerCapabilities{
 			Resources: &protocol.ResourcesCapability{
@@ -44,6 +55,12 @@ func NewServer(info models.Implementation, version string) *Server {
 			Logging: map[string]interface{}{},
 		},
 	}
+	server.logManager.SetSink(func(level models.LogLevel, data interface{}, logger string) {
+		notification := models.NewLoggingMessageNotification(level, data, logger)
+		server.sendNotification(notification)
+	})
+
+	return server
 }
 
 // IsInitialized returns whether the server has been initialized.
@@ -64,6 +81,8 @@ func (s *Server) HandleMessage(ctx context.Context, msg *protocol.Message) (*pro
 	}
 
 	switch msg.Method {
+	case "completion/complete":
+		return s.handleComplete(ctx, msg)
 	case "ping":
 		return s.handlePing(ctx, msg)
 	case "resources/list":
@@ -76,6 +95,16 @@ func (s *Server) HandleMessage(ctx context.Context, msg *protocol.Message) (*pro
 		return s.handleResourceSubscribe(ctx, msg)
 	case "resources/unsubscribe":
 		return s.handleResourceUnsubscribe(ctx, msg)
+	case "tools/list":
+		return s.handleListTools(ctx, msg)
+	case "tools/call":
+		return s.handleCallTool(ctx, msg)
+	case "prompts/list":
+		return s.handleListPrompts(ctx, msg)
+	case "prompts/get":
+		return s.handleGetPrompt(ctx, msg)
+	case "logging/setLevel":
+		return s.handleSetLevel(ctx, msg)
 	default:
 		return nil, fmt.Errorf("unsupported method: %s", msg.Method)
 	}
@@ -199,6 +228,110 @@ func (s *Server) handleUpdateResource(ctx context.Context, msg *protocol.Message
 	return s.createResponse(msg.ID, struct{}{})
 }
 
+func (s *Server) handleComplete(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
+	var params struct {
+		Argument struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		} `json:"argument"`
+		Ref json.RawMessage `json:"ref"`
+	}
+
+	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+		return nil, fmt.Errorf("invalid complete params: %w", err)
+	}
+
+	// Determine if ref is a PromptReference or ResourceReference
+	var refMap map[string]interface{}
+	if err := json.Unmarshal(params.Ref, &refMap); err != nil {
+		return nil, fmt.Errorf("invalid reference format: %w", err)
+	}
+
+	refType, ok := refMap["type"].(string)
+	if !ok {
+		return nil, fmt.Errorf("reference type not found")
+	}
+
+	var completionValues []string
+	var hasMore bool
+	var total int
+
+	switch refType {
+	case "ref/prompt":
+		// Handle prompt completion
+		name, ok := refMap["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("prompt name not found")
+		}
+
+		// If we have a prompt manager, use it to get completions
+		if s.promptManager != nil {
+			values, more, totalPtr, err := s.promptManager.GetCompletions(name, params.Argument.Name, params.Argument.Value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get prompt completions: %w", err)
+			}
+			completionValues = values
+			hasMore = more
+			if totalPtr != nil {
+				total = *totalPtr
+			} else {
+				total = len(completionValues)
+			}
+		} else {
+			// Fallback behavior when promptManager is not available
+			completionValues = []string{}
+			total = 0
+		}
+
+	case "ref/resource":
+		// Handle resource completion
+		uri, ok := refMap["uri"].(string)
+		if !ok {
+			return nil, fmt.Errorf("resource URI not found")
+		}
+
+		// Get potential completions from resource content
+		resourceContent, err := s.resourceManager.ReadResource(ctx, uri)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read resource for completions: %w", err)
+		}
+
+		// Extract text from resource
+		if len(resourceContent) > 0 {
+			if textContent, ok := resourceContent[0].(*models.TextResourceContents); ok {
+				// Simple implementation: find words that start with the prefix
+				words := strings.Fields(textContent.Text)
+				prefix := strings.ToLower(params.Argument.Value)
+				uniqueMatches := make(map[string]struct{})
+
+				for _, word := range words {
+					if strings.HasPrefix(strings.ToLower(word), prefix) {
+						uniqueMatches[word] = struct{}{}
+					}
+				}
+
+				// Convert matches to slice
+				for word := range uniqueMatches {
+					completionValues = append(completionValues, word)
+				}
+
+				total = len(completionValues)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unsupported reference type: %s", refType)
+	}
+
+	// Create result
+	totalPtr := &total
+	result := models.CompleteResult{}
+	result.Completion.Values = completionValues
+	result.Completion.HasMore = hasMore
+	result.Completion.Total = totalPtr
+
+	return s.createResponse(msg.ID, result)
+}
+
 func (s *Server) handleResourceSubscribe(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
 	var params struct {
 		URI string `json:"uri"`
@@ -272,4 +405,181 @@ func (s *Server) AddRoot(root models.Root) error {
 // Notifications returns the channel for receiving server notifications.
 func (s *Server) Notifications() <-chan protocol.Message {
 	return s.notificationChan
+}
+
+func (s *Server) handleListTools(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
+	var params struct {
+		Cursor *models.Cursor `json:"cursor,omitempty"`
+	}
+
+	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+		return nil, fmt.Errorf("invalid list tools params: %w", err)
+	}
+
+	tools := s.toolsManager.ListTools()
+
+	// Simple pagination - in a real implementation, this would be more sophisticated
+	result := models.ListToolsResult{
+		Tools: tools,
+		// Add pagination logic as needed
+	}
+
+	return s.createResponse(msg.ID, result)
+}
+
+func (s *Server) handleCallTool(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
+	var params struct {
+		Name      string                 `json:"name"`
+		Arguments map[string]interface{} `json:"arguments,omitempty"`
+	}
+
+	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+		return nil, fmt.Errorf("invalid call tool params: %w", err)
+	}
+
+	toolResult, err := s.toolsManager.CallTool(params.Name, params.Arguments)
+	if err != nil {
+		// Return tool error as part of the result, not as a protocol error
+		errorContent := models.TextContent{
+			Type: "text",
+			Text: fmt.Sprintf("Error calling tool: %v", err),
+		}
+		toolResult = &models.CallToolResult{
+			Content: []models.Content{errorContent},
+			IsError: true,
+		}
+	}
+
+	return s.createResponse(msg.ID, toolResult)
+}
+
+func (s *Server) handleListPrompts(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
+	var params struct {
+		Cursor *models.Cursor `json:"cursor,omitempty"`
+	}
+
+	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+		return nil, fmt.Errorf("invalid list prompts params: %w", err)
+	}
+
+	prompts, nextCursor, err := s.promptManager.ListPrompts(ctx, params.Cursor)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list prompts: %w", err)
+	}
+
+	result := models.ListPromptsResult{
+		Prompts:    prompts,
+		NextCursor: nextCursor,
+	}
+
+	return s.createResponse(msg.ID, result)
+}
+
+func (s *Server) handleGetPrompt(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
+	var params struct {
+		Name      string            `json:"name"`
+		Arguments map[string]string `json:"arguments,omitempty"`
+	}
+
+	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+		return nil, fmt.Errorf("invalid get prompt params: %w", err)
+	}
+
+	messages, description, err := s.promptManager.GetPrompt(ctx, params.Name, params.Arguments)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get prompt: %w", err)
+	}
+
+	result := models.GetPromptResult{
+		Messages:    messages,
+		Description: description,
+	}
+
+	return s.createResponse(msg.ID, result)
+}
+
+func (s *Server) handleSetLevel(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
+	var params struct {
+		Level models.LogLevel `json:"level"`
+	}
+
+	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+		return nil, fmt.Errorf("invalid set level params: %w", err)
+	}
+
+	if !params.Level.IsValid() {
+		return nil, fmt.Errorf("invalid log level: %s", params.Level)
+	}
+
+	s.logManager.SetLevel(params.Level)
+	return s.createResponse(msg.ID, struct{}{})
+}
+
+// Add a SendLog method to send logging notifications.
+func (s *Server) SendLog(level models.LogLevel, data interface{}, logger string) {
+	notification := models.NewLoggingMessageNotification(level, data, logger)
+	s.sendNotification(notification)
+}
+
+// sendNotification sends a notification through the notification channel.
+func (s *Server) sendNotification(notification models.Notification) {
+	notifMethod := notification.Method()
+
+	// Convert notification to appropriate structure based on type
+	var params interface{}
+
+	switch n := notification.(type) {
+	case *models.ResourceUpdatedNotification:
+		params = struct {
+			URI string `json:"uri"`
+		}{
+			URI: n.Params.URI,
+		}
+	case *models.LoggingMessageNotification:
+		params = struct {
+			Level  models.LogLevel `json:"level"`
+			Data   interface{}     `json:"data"`
+			Logger string          `json:"logger,omitempty"`
+		}{
+			Level:  n.Params.Level,
+			Data:   n.Params.Data,
+			Logger: n.Params.Logger,
+		}
+	case *models.PromptListChangedNotification:
+		params = struct{}{}
+	case *models.ToolListChangedNotification:
+		params = struct{}{}
+	case *models.ResourceListChangedNotification:
+		params = struct{}{}
+	default:
+		// Handle unknown notification types
+		s.logManager.Log(models.LogLevelWarning,
+			fmt.Sprintf("Unknown notification type: %T", notification),
+			"server")
+		return
+	}
+
+	paramsBytes, err := json.Marshal(params)
+	if err != nil {
+		s.logManager.Log(models.LogLevelError,
+			fmt.Sprintf("Failed to marshal notification params: %v", err),
+			"server")
+		return
+	}
+
+	msg := protocol.Message{
+		JSONRPC: "2.0",
+		Method:  notifMethod,
+		Params:  json.RawMessage(paramsBytes),
+	}
+
+	select {
+	case s.notificationChan <- msg:
+		// Successfully sent notification
+	default:
+		// Channel is full, log warning and skip notification
+		s.logManager.Log(models.LogLevelWarning,
+			"Notification channel full, dropping notification",
+			"server")
+	}
 }

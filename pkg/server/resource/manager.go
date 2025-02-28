@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -113,7 +114,7 @@ func (m *Manager) ReadResource(ctx context.Context, uri string) ([]models.Resour
 		return nil, fmt.Errorf("resource not found: %s", uri)
 	}
 
-	resourceContent := models.TextResourceContents{
+	resourceContent := &models.TextResourceContents{
 		ResourceContents: models.ResourceContents{
 			URI:      resource.URI,
 			MimeType: resource.MimeType,
@@ -164,6 +165,59 @@ func (m *Manager) Subscribe(uri string) (*Subscription, error) {
 		uri:     uri,
 		manager: m,
 	}, nil
+}
+
+// GetCompletions returns completion options for a resource argument.
+// It analyzes the resource contents and returns possible completions
+// that match the provided prefix.
+func (m *Manager) GetCompletions(uri string, argName, prefix string) ([]string, bool, *int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Check if the resource exists
+	resource, exists := m.resources[uri]
+	content, contentExists := m.contents[uri]
+	if !exists || !contentExists {
+		return nil, false, nil, fmt.Errorf("resource not found: %s", uri)
+	}
+
+	// This is a basic implementation that could be expanded based on
+	// the resource type and content analysis
+	var results []string
+
+	// If the resource is text-based, perform simple completion
+	if strings.HasPrefix(resource.MimeType, "text/") {
+		// Split content into words and find those matching the prefix
+		words := strings.Fields(content)
+		seen := make(map[string]struct{})
+
+		for _, word := range words {
+			// Normalize to lowercase for comparison
+			normalizedWord := strings.ToLower(word)
+			if strings.HasPrefix(normalizedWord, strings.ToLower(prefix)) && len(normalizedWord) > len(prefix) {
+				// Avoid duplicates
+				if _, ok := seen[normalizedWord]; !ok {
+					results = append(results, normalizedWord)
+					seen[normalizedWord] = struct{}{}
+				}
+			}
+		}
+	}
+
+	// Sort results alphabetically for consistency
+	sort.Strings(results)
+
+	// Limit to first 100 results to avoid overwhelming the client
+	hasMore := false
+	if len(results) > 100 {
+		total := len(results)
+		results = results[:100]
+		hasMore = true
+		return results, hasMore, &total, nil
+	}
+
+	total := len(results)
+	return results, false, &total, nil
 }
 
 // Subscription represents an active subscription to resource updates.

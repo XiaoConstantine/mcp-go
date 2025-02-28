@@ -3,7 +3,19 @@ package protocol
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+func TestRequestIDTypes(t *testing.T) {
+	// Test string request ID
+	var stringID RequestID = "request-123"
+	assert.Equal(t, "request-123", stringID)
+
+	// Test integer request ID
+	var intID RequestID = 42
+	assert.Equal(t, 42, intID)
+}
 
 func TestMessageMarshalUnmarshal(t *testing.T) {
 	tests := []struct {
