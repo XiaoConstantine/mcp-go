@@ -16,7 +16,7 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/server/core"
 )
 
-// Server represents an MCP server that communicates over STDIO
+// Server represents an MCP server that communicates over STDIO.
 type Server struct {
 	mcpServer      core.MCPServer
 	reader         *bufio.Reader
@@ -32,19 +32,19 @@ type Server struct {
 	outputSync   *sync.WaitGroup
 }
 
-// ServerConfig holds configuration options for the STDIO server
+// ServerConfig holds configuration options for the STDIO server.
 type ServerConfig struct {
 	DefaultTimeout time.Duration // Default timeout for request processing
 }
 
-// DefaultServerConfig provides reasonable default configuration values
+// DefaultServerConfig provides reasonable default configuration values.
 func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
 		DefaultTimeout: 30 * time.Second,
 	}
 }
 
-// NewServer creates a new STDIO-based MCP server
+// NewServer creates a new STDIO-based MCP server.
 func NewServer(mcpServer core.MCPServer, config *ServerConfig) *Server {
 	if config == nil {
 		config = DefaultServerConfig()
@@ -62,7 +62,7 @@ func NewServer(mcpServer core.MCPServer, config *ServerConfig) *Server {
 	}
 }
 
-// Start begins the server's read-process-write loop
+// Start begins the server's read-process-write loop.
 func (s *Server) Start() error {
 	s.shutdownMu.RLock()
 	if s.shuttingDown {
@@ -110,6 +110,7 @@ func (s *Server) Start() error {
 			continue
 
 		case line := <-readCh:
+			fmt.Println("RECEIVED MESSAGE:", line)
 			// Process the message
 			var message protocol.Message
 			if err := json.Unmarshal([]byte(line), &message); err != nil {
@@ -299,6 +300,8 @@ func (s *Server) Stop() error {
 	s.shuttingDown = true
 	s.shutdownMu.Unlock()
 
+	// Give a breath time for server to reject requests while shutdown
+	time.Sleep(500 * time.Millisecond)
 	// Signal all operations to stop
 	s.cancel()
 
@@ -363,7 +366,7 @@ func (s *Server) SetTimeout(timeout time.Duration) {
 	s.defaultTimeout = timeout
 }
 
-// contains checks if the string contains any of the substrings
+// contains checks if the string contains any of the substrings.
 func contains(s string, substrings ...string) bool {
 	for _, sub := range substrings {
 		if strings.Contains(strings.ToLower(s), strings.ToLower(sub)) {

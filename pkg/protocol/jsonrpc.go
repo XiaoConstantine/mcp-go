@@ -49,16 +49,16 @@ type Notification struct {
 	Params  interface{} `json:"params,omitempty"`
 }
 
-// Error codes as per JSON-RPC 2.0 specification
+// Error codes as per JSON-RPC 2.0 specification.
 const (
-	// Standard JSON-RPC 2.0 error codes
+	// Standard JSON-RPC 2.0 error codes.
 	ErrCodeParseError     = -32700
 	ErrCodeInvalidRequest = -32600
 	ErrCodeMethodNotFound = -32601
 	ErrCodeInvalidParams  = -32602
 	ErrCodeInternalError  = -32603
 
-	// Custom error codes
+	// Custom error codes.
 	ErrCodeServerTimeout = -32000
 	ErrCodeShuttingDown  = -32001
 )
