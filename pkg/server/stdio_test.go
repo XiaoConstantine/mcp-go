@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockCoreServer is a mock implementation of the core.Server interface
+// MockCoreServer is a mock implementation of the core.Server interface.
 type MockCoreServer struct {
 	mock.Mock
 	notificationCh chan protocol.Message
@@ -70,7 +70,7 @@ func (sb *SafeBuffer) String() string {
 	return sb.buffer.String()
 }
 
-// customReader implements a reader that can be controlled for testing
+// customReader implements a reader that can be controlled for testing.
 type customReader struct {
 	buf    bytes.Buffer
 	closed bool
@@ -116,7 +116,7 @@ func (r *customReader) Close() {
 	r.cond.Broadcast()
 }
 
-// Test helpers
+// Test helpers.
 func createJSONRPCRequest(id interface{}, method string, params interface{}) string {
 	req := protocol.Message{
 		JSONRPC: "2.0",
@@ -133,10 +133,6 @@ func createJSONRPCRequest(id interface{}, method string, params interface{}) str
 	return string(bytes) + "\n"
 }
 
-func createStopMessage() string {
-	return createJSONRPCRequest(999, "test/stop", nil)
-}
-
 func waitForOutput(buf *SafeBuffer, contains string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -148,7 +144,7 @@ func waitForOutput(buf *SafeBuffer, contains string, timeout time.Duration) bool
 	return false
 }
 
-// Setup function to create a testable server with custom IO
+// Setup function to create a testable server with custom IO.
 func setupTestServer(t *testing.T) (*Server, *MockCoreServer, *customReader, *SafeBuffer) {
 	mockCore := NewMockCoreServer()
 
@@ -169,7 +165,7 @@ func setupTestServer(t *testing.T) (*Server, *MockCoreServer, *customReader, *Sa
 	return server, mockCore, customReader, outputBuf
 }
 
-// Test successful processing of a request
+// Test successful processing of a request.
 func TestServer_ProcessRequest(t *testing.T) {
 	server, mockCore, customReader, outputBuf := setupTestServer(t)
 
@@ -225,7 +221,7 @@ func TestServer_ProcessRequest(t *testing.T) {
 	mockCore.AssertExpectations(t)
 }
 
-// Test handling of malformed JSON
+// Test handling of malformed JSON.
 func TestServer_ParseError(t *testing.T) {
 	server, mockCore, customReader, outputBuf := setupTestServer(t)
 
@@ -265,7 +261,7 @@ func TestServer_ParseError(t *testing.T) {
 	mockCore.AssertNotCalled(t, "HandleMessage")
 }
 
-// Test handling of method errors
+// Test handling of method errors.
 func TestServer_MethodError(t *testing.T) {
 	server, mockCore, customReader, outputBuf := setupTestServer(t)
 
@@ -311,7 +307,7 @@ func TestServer_MethodError(t *testing.T) {
 	mockCore.AssertExpectations(t)
 }
 
-// Test notification forwarding
+// Test notification forwarding.
 func TestServer_NotificationForwarding(t *testing.T) {
 	server, mockCore, customReader, outputBuf := setupTestServer(t)
 
@@ -352,7 +348,7 @@ func TestServer_NotificationForwarding(t *testing.T) {
 		"Output should contain notification parameters")
 }
 
-// Test request timeout handling
+// Test request timeout handling.
 func TestServer_RequestTimeout(t *testing.T) {
 	server, mockCore, customReader, outputBuf := setupTestServer(t)
 
@@ -395,7 +391,7 @@ func TestServer_RequestTimeout(t *testing.T) {
 		"Response should contain timeout error")
 }
 
-// Test graceful shutdown
+// Test graceful shutdown.
 func TestServer_GracefulShutdown(t *testing.T) {
 	server, mockCore, customReader, _ := setupTestServer(t)
 
@@ -410,7 +406,9 @@ func TestServer_GracefulShutdown(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.Start()
+		if err := server.Start(); err != nil {
+			t.Errorf("Server start failed: %v", err)
+		}
 	}()
 
 	// Wait for server to start
@@ -433,7 +431,7 @@ func TestServer_GracefulShutdown(t *testing.T) {
 	mockCore.AssertExpectations(t)
 }
 
-// Test rejecting new requests during shutdown
+// Test rejecting new requests during shutdown.
 func TestServer_RejectDuringShutdown(t *testing.T) {
 	server, mockCore, customReader, outputBuf := setupTestServer(t)
 
@@ -442,20 +440,21 @@ func TestServer_RejectDuringShutdown(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.Start()
+		if err := server.Start(); err != nil {
+			t.Errorf("Server start failed: %v", err)
+		}
 	}()
-	mockCore.On("HandleMessage", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-		// Sleep to simulate work
-		time.Sleep(10 * time.Millisecond)
-	}).Return(&protocol.Message{JSONRPC: "2.0", Error: &protocol.ErrorObject{
-		Code: protocol.ErrCodeShuttingDown,
-	}}, nil)
-
 	// Wait for server to start
 	time.Sleep(50 * time.Millisecond)
 
 	// Start shutdown but don't wait for it to complete
-	go server.Stop()
+	go func() {
+		err := server.Stop()
+		if err != nil {
+			// Log or handle the error
+			t.Errorf("Server stop failed: %v", err)
+		}
+	}()
 
 	// Wait a bit for shutdown to start but not complete
 	time.Sleep(20 * time.Millisecond)
@@ -481,7 +480,7 @@ func TestServer_RejectDuringShutdown(t *testing.T) {
 	mockCore.AssertNotCalled(t, "HandleMessage")
 }
 
-// Test handling notifications without ID
+// Test handling notifications without ID.
 func TestServer_ProcessNotification(t *testing.T) {
 	server, mockCore, customReader, outputBuf := setupTestServer(t)
 
@@ -497,7 +496,9 @@ func TestServer_ProcessNotification(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		serverErr = server.Start()
+		if err := server.Start(); err != nil {
+			t.Errorf("Server start failed: %v", err)
+		}
 	}()
 
 	// Wait for server to start
@@ -523,7 +524,7 @@ func TestServer_ProcessNotification(t *testing.T) {
 	mockCore.AssertExpectations(t)
 }
 
-// Test changing timeout at runtime
+// Test changing timeout at runtime.
 func TestServer_SetTimeout(t *testing.T) {
 	server, _, _, _ := setupTestServer(t)
 
@@ -538,7 +539,7 @@ func TestServer_SetTimeout(t *testing.T) {
 	assert.Equal(t, newTimeout, server.defaultTimeout, "Timeout should be updated")
 }
 
-// Test proper handling of invalid params error
+// Test proper handling of invalid params error.
 func TestServer_InvalidParams(t *testing.T) {
 	server, mockCore, customReader, outputBuf := setupTestServer(t)
 
