@@ -110,7 +110,6 @@ func (s *Server) Start() error {
 			continue
 
 		case line := <-readCh:
-			fmt.Println("RECEIVED MESSAGE:", line)
 			// Process the message
 			var message protocol.Message
 			if err := json.Unmarshal([]byte(line), &message); err != nil {
@@ -130,12 +129,10 @@ func (s *Server) Start() error {
 			s.shutdownMu.RLock()
 			isShutDown := s.shuttingDown
 			s.shutdownMu.RUnlock()
-			fmt.Println("==== Checking shut down ====")
 
 			if isShutDown {
 				// Send shutdown error for requests with an ID
 				if message.ID != nil {
-					fmt.Println("Server is shutting down, sending error response")
 					s.writeError(message.ID, protocol.ErrCodeShuttingDown, "Server is shutting down", nil)
 				}
 				continue // Skip normal processing
@@ -158,13 +155,8 @@ func (s *Server) handleMessage(msg *protocol.Message) {
 	s.shutdownMu.RUnlock()
 
 	if isShutDown {
-
-		fmt.Println("Found request during shutdown, ID:", msg.ID)
 		// If server is shutting down, reject the request
 		if msg.ID != nil {
-
-			fmt.Println("Found request during shutdown, ID:", msg.ID)
-
 			s.writeError(msg.ID, protocol.ErrCodeShuttingDown,
 				"Server is shutting down", nil)
 		}
@@ -176,7 +168,6 @@ func (s *Server) handleMessage(msg *protocol.Message) {
 	// Create a context with timeout for this request
 	ctx, cancel := context.WithTimeout(s.ctx, timeout)
 	defer cancel()
-	//	defer s.outputSync.Done()
 	// Process the message with the timeout context
 	responseCh := make(chan *protocol.Message, 1)
 	errCh := make(chan error, 1)
@@ -227,12 +218,6 @@ func (s *Server) forwardNotifications() {
 			return
 
 		case notif, ok := <-notifChan:
-			// if !ok {
-			// 	// Channel closed
-			// 	return
-			// }
-			// s.writeMessage(&notif)
-			//
 			if ok {
 				s.outputSync.Add(1)
 				s.writeMessage(&notif)
@@ -259,7 +244,6 @@ func (s *Server) writeMessage(msg *protocol.Message) {
 	}
 
 	msgBytes, err := json.Marshal(msg)
-	//	fmt.Fprintf(os.Stderr, "Writing message: %s\n", string(msgBytes))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error marshaling message: %v\n", err)
 		return
@@ -277,8 +261,6 @@ func (s *Server) writeMessage(msg *protocol.Message) {
 		fmt.Fprintf(os.Stderr, "Error flushing writer: %v\n", err)
 		return
 	}
-
-	// fmt.Fprintf(os.Stderr, "Writer flushed successfully\n")
 }
 
 func (s *Server) writeError(id *protocol.RequestID, code int, message string, data interface{}) {
