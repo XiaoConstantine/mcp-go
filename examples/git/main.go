@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -275,6 +276,11 @@ func setupGitPrompts(mcpServer *core.Server) {
 }
 
 func main() {
+
+	repoPathFlag := flag.String("repo", "", "Path to Git repository")
+
+	flag.Parse()
+
 	// Create server info
 	serverInfo := models.Implementation{
 		Name:    "git-mcp-server",
@@ -283,13 +289,38 @@ func main() {
 
 	// Create the core MCP server
 	mcpServer := core.NewServer(serverInfo, "0.0.1")
+	// Use provided repository path or detect automatically
+	var repoPath string
+	var err error
 
-	// Detect Git repository
-	repoPath, err := detectGitRepository()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
-		fmt.Fprintf(os.Stderr, "Using current directory instead\n")
-		repoPath, _ = os.Getwd()
+	if *repoPathFlag != "" {
+		// Use the path provided via command-line
+		repoPath = *repoPathFlag
+
+		// Verify it's a valid Git repository
+		gitDir := filepath.Join(repoPath, ".git")
+		if _, statErr := os.Stat(gitDir); statErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Specified path does not appear to be a Git repository: %v\n", statErr)
+			fmt.Fprintf(os.Stderr, "Will attempt automatic detection instead.\n")
+
+			// Fall back to automatic detection
+			repoPath, err = detectGitRepository()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Using current directory instead\n")
+				repoPath, _ = os.Getwd()
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Using specified Git repository: %s\n", repoPath)
+		}
+	} else {
+		// No path provided, use automatic detection
+		repoPath, err = detectGitRepository()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Using current directory instead\n")
+			repoPath, _ = os.Getwd()
+		}
 	}
 
 	// Register Git tools
@@ -326,7 +357,7 @@ func main() {
 	// Start the server in a goroutine
 	serverDone := make(chan error, 1)
 	go func() {
-		fmt.Println("Starting Git MCP server...")
+		fmt.Fprintln(os.Stderr, "Starting Git MCP server...")
 		serverDone <- stdioServer.Start()
 	}()
 
@@ -337,13 +368,19 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 			os.Exit(1)
 		}
+		// Server completed on its own (likely due to client disconnect)
+		fmt.Fprintln(os.Stderr, "Server stopped, performing cleanup...")
+		// Still call Stop() to ensure all resources are released
+		if err := stdioServer.Stop(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error during cleanup: %v\n", err)
+		}
 	case <-c:
-		fmt.Println("\nReceived termination signal, shutting down...")
+		fmt.Fprintln(os.Stderr, "\nReceived termination signal, shutting down...")
 		if err := stdioServer.Stop(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error during shutdown: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
-	fmt.Println("Git MCP server shutdown complete")
+	fmt.Fprintln(os.Stderr, "Git MCP server shutdown complete")
 }
