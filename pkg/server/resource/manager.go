@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/XiaoConstantine/mcp-go/pkg/models"
 )
@@ -18,6 +20,7 @@ type Manager struct {
 	resources   map[string]*models.Resource
 	contents    map[string]string // Store resource contents in memory
 	roots       []models.Root
+	cancel      context.CancelFunc
 	subscribers map[string]map[chan<- *models.ResourceUpdatedNotification]struct{}
 	subMu       sync.RWMutex
 }
@@ -218,6 +221,67 @@ func (m *Manager) GetCompletions(uri string, argName, prefix string) ([]string, 
 
 	total := len(results)
 	return results, false, &total, nil
+}
+
+// Shutdown performs orderly cleanup of all resources
+func (m *Manager) Shutdown(ctx context.Context) error {
+	// Use timeout to ensure shutdown doesn't block forever
+	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Close all subscriptions
+	m.closeAllSubscriptions()
+
+	// Wait a brief moment for subscription notifications to process
+	select {
+	case <-shutdownCtx.Done():
+		return shutdownCtx.Err()
+	case <-time.After(100 * time.Millisecond):
+		// Continue shutdown
+	}
+
+	// Release any file system monitors or watchers here
+
+	// Clear internal data structures
+	m.mu.Lock()
+	m.resources = make(map[string]*models.Resource)
+	m.contents = make(map[string]string)
+	m.roots = nil
+	m.mu.Unlock()
+
+	// Force garbage collection to release resources
+	// This is optional and may be excessive for most applications
+	runtime.GC()
+
+	return nil
+}
+
+// closeAllSubscriptions closes all active subscriptions
+func (m *Manager) closeAllSubscriptions() {
+	m.subMu.Lock()
+	defer m.subMu.Unlock()
+
+	// Create a list of all channels to close
+	var subscriptions []chan<- *models.ResourceUpdatedNotification
+
+	// Gather all subscription channels
+	for _, subs := range m.subscribers {
+		for ch := range subs {
+			subscriptions = append(subscriptions, ch)
+		}
+	}
+
+	// Close all channels and clear the map
+	for _, ch := range subscriptions {
+		// Use a type assertion with a channel conversion to close it
+		// This is necessary because we can't close a channel of chan<- type
+		if c, ok := interface{}(ch).(chan *models.ResourceUpdatedNotification); ok {
+			close(c)
+		}
+	}
+
+	// Clear the subscribers map
+	m.subscribers = make(map[string]map[chan<- *models.ResourceUpdatedNotification]struct{})
 }
 
 // Subscription represents an active subscription to resource updates.

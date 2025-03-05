@@ -1,18 +1,20 @@
 // Package protocol provides the core protocol model definitions for MCP
 package protocol
 
+import "encoding/json"
+
 // RequestID represents a uniquely identifying ID for a request in JSON-RPC
 // It can be either a string or an integer.
 type RequestID interface{}
 
 // Message represents any JSON-RPC message.
 type Message struct {
-	JSONRPC string       `json:"jsonrpc"`
-	ID      *RequestID   `json:"id,omitempty"`
-	Method  string       `json:"method,omitempty"`
-	Params  interface{}  `json:"params,omitempty"`
-	Result  interface{}  `json:"result,omitempty"`
-	Error   *ErrorObject `json:"error,omitempty"`
+	JSONRPC string          `json:"jsonrpc"`
+	ID      *RequestID      `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  interface{}     `json:"result,omitempty"`
+	Error   *ErrorObject    `json:"error,omitempty"`
 }
 
 // ErrorObject represents an error response in JSON-RPC.
