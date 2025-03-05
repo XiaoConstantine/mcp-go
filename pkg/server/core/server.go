@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/XiaoConstantine/mcp-go/pkg/models"
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
@@ -18,18 +20,24 @@ import (
 type MCPServer interface {
 	HandleMessage(ctx context.Context, msg *protocol.Message) (*protocol.Message, error)
 	Notifications() <-chan protocol.Message
+	Shutdown(ctx context.Context) error
 }
 
 // Server represents the core MCP server, integrating various capabilities.
 type Server struct {
-	info             models.Implementation
-	version          string
-	initOnce         sync.Once
+	info     models.Implementation
+	version  string
+	initOnce sync.Once
+
+	shutdownOnce     sync.Once
+	shutdownCh       chan struct{}
 	initialized      bool
 	mu               sync.RWMutex
 	resourceManager  *resource.Manager
 	capabilities     protocol.ServerCapabilities
 	notificationChan chan protocol.Message
+
+	wg sync.WaitGroup
 
 	toolsManager  *tools.ToolsManager
 	promptManager *prompt.Manager
@@ -44,6 +52,7 @@ func NewServer(info models.Implementation, version string) *Server {
 		resourceManager:  resource.NewManager(),
 		toolsManager:     tools.NewToolsManager(),
 		promptManager:    prompt.NewManager(),
+		shutdownCh:       make(chan struct{}),
 		logManager:       logging.NewManager(),
 		notificationChan: make(chan protocol.Message, 100),
 		capabilities: protocol.ServerCapabilities{
@@ -73,6 +82,87 @@ func (s *Server) IsInitialized() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.initialized
+}
+
+// Shutdown initiates server shutdown process
+func (s *Server) Shutdown(ctx context.Context) error {
+	var err error
+
+	s.shutdownOnce.Do(func() {
+
+		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		// Signal shutdown
+		close(s.shutdownCh)
+
+		s.logManager.Log(models.LogLevelInfo, "MCP Server is shutting down", "server")
+		// Create a wait group to track component shutdown
+		var wg sync.WaitGroup
+
+		// Cleanup resource manager
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if resErr := s.resourceManager.Shutdown(shutdownCtx); resErr != nil {
+				s.logManager.Log(models.LogLevelError,
+					fmt.Sprintf("Error during resource manager shutdown: %v", resErr),
+					"server")
+				err = resErr // Capture the first error
+			}
+		}()
+		// Clean up prompt manager if needed
+		// Currently no cleanup needed, but could be added later
+		// Clean up tool handlers
+		// This could involve closing connections or freeing resources
+		// Not implemented yet, but could be added here
+
+		// Give components time to clean up
+		// Other cleanup as needed
+		// Wait for component shutdown with timeout
+		shutdownComplete := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(shutdownComplete)
+		}()
+
+		// Wait for shutdown to complete or timeout
+		select {
+		case <-shutdownComplete:
+			s.logManager.Log(models.LogLevelInfo, "MCP Server shutdown complete", "server")
+		case <-shutdownCtx.Done():
+			s.logManager.Log(models.LogLevelError, "MCP Server shutdown timed out", "server")
+			err = shutdownCtx.Err()
+		}
+		// Final step: drain the notification channel to prevent deadlocks
+		// Use a separate goroutine to avoid blocking if channel is full
+		go func() {
+			// Drain for a maximum of 1 second
+			drainCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+
+			drainDone := make(chan struct{})
+			go func() {
+				for {
+					select {
+					case _, ok := <-s.notificationChan:
+						if !ok {
+							// Channel was closed
+							close(drainDone)
+							return
+						}
+					case <-drainCtx.Done():
+						// Timeout reached
+						close(drainDone)
+						return
+					}
+				}
+			}()
+
+			<-drainDone
+		}()
+	})
+
+	return err
 }
 
 // HandleMessage processes incoming MCP messages and returns appropriate responses.
@@ -117,6 +207,8 @@ func (s *Server) HandleMessage(ctx context.Context, msg *protocol.Message) (*pro
 
 func (s *Server) createResponse(id *protocol.RequestID, result interface{}) (*protocol.Message, error) {
 	resultBytes, err := json.Marshal(result)
+
+	fmt.Fprintf(os.Stderr, "Response JSON: %s\n", string(resultBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response: %w", err)
 	}
@@ -139,25 +231,38 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 			ProtocolVersion string                      `json:"protocolVersion"`
 		}
 
-		if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+		fmt.Fprintf(os.Stderr, "Unmarshaling initialization params...\n")
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			initErr = fmt.Errorf("invalid initialize params: %w", err)
+
+			fmt.Fprintf(os.Stderr, "Initialization parameter error: %v\n", err)
 			return
 		}
 
+		fmt.Fprintf(os.Stderr, "Protocol version: %s\n", params.ProtocolVersion)
+		fmt.Fprintf(os.Stderr, "Client info: %s v%s\n", params.ClientInfo.Name, params.ClientInfo.Version)
 		s.mu.Lock()
 		s.initialized = true
 		s.mu.Unlock()
 
 		initialized = true
+
+		fmt.Fprintf(os.Stderr, "Initialization completed successfully\n")
 	})
 
 	if initErr != nil {
+
+		fmt.Fprintf(os.Stderr, "Initialization failed: %v\n", initErr)
 		return nil, initErr
 	}
 
 	if !initialized {
+
+		fmt.Fprintf(os.Stderr, "Server already initialized\n")
 		return nil, fmt.Errorf("server already initialized")
 	}
+
+	fmt.Fprintf(os.Stderr, "Creating initialization response...\n")
 
 	result := models.InitializeResult{
 		Capabilities:    s.capabilities,
@@ -166,6 +271,7 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 		Instructions:    fmt.Sprintf("MCP Server %s - Ready for requests", s.version),
 	}
 
+	fmt.Fprintf(os.Stderr, "Sending initialization response...\n")
 	return s.createResponse(msg.ID, result)
 }
 
@@ -178,7 +284,7 @@ func (s *Server) handleListResources(ctx context.Context, msg *protocol.Message)
 		Cursor *models.Cursor `json:"cursor,omitempty"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid list resources params: %w", err)
 	}
 
@@ -200,7 +306,7 @@ func (s *Server) handleReadResource(ctx context.Context, msg *protocol.Message) 
 		URI string `json:"uri"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid read resource params: %w", err)
 	}
 
@@ -222,7 +328,7 @@ func (s *Server) handleUpdateResource(ctx context.Context, msg *protocol.Message
 		Content string `json:"content"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid update resource params: %w", err)
 	}
 
@@ -242,7 +348,7 @@ func (s *Server) handleComplete(ctx context.Context, msg *protocol.Message) (*pr
 		Ref json.RawMessage `json:"ref"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid complete params: %w", err)
 	}
 
@@ -342,7 +448,7 @@ func (s *Server) handleResourceSubscribe(ctx context.Context, msg *protocol.Mess
 		URI string `json:"uri"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid subscribe params: %w", err)
 	}
 
@@ -361,7 +467,7 @@ func (s *Server) handleResourceUnsubscribe(ctx context.Context, msg *protocol.Me
 		URI string `json:"uri"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid unsubscribe params: %w", err)
 	}
 
@@ -404,7 +510,40 @@ func (s *Server) forwardResourceNotifications(sub *resource.Subscription) {
 
 // AddRoot adds a new root path for resource management.
 func (s *Server) AddRoot(root models.Root) error {
-	return s.resourceManager.AddRoot(root)
+
+	_, cancel := context.WithCancel(context.Background())
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer cancel()
+		select {
+		case <-s.shutdownCh:
+			// Exit early if server is shutting down
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "Starting asynchronous addition of root %s...\n", root.URI)
+
+			// Continue with resource scan
+			if err := s.resourceManager.AddRoot(root); err != nil {
+				// Error logging...
+				s.logManager.Log(models.LogLevelError,
+					fmt.Sprintf("Error adding root %s: %v", root.URI, err),
+					"resource")
+
+			} else {
+				// Success logging...
+				s.logManager.Log(models.LogLevelInfo,
+					fmt.Sprintf("Successfully added root %s", root.URI),
+					"resource")
+
+			}
+		}
+
+	}()
+
+	return nil
+
 }
 
 // Notifications returns the channel for receiving server notifications.
@@ -417,7 +556,7 @@ func (s *Server) handleListTools(ctx context.Context, msg *protocol.Message) (*p
 		Cursor *models.Cursor `json:"cursor,omitempty"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid list tools params: %w", err)
 	}
 
@@ -438,7 +577,7 @@ func (s *Server) handleCallTool(ctx context.Context, msg *protocol.Message) (*pr
 		Arguments map[string]interface{} `json:"arguments,omitempty"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid call tool params: %w", err)
 	}
 
@@ -463,7 +602,7 @@ func (s *Server) handleListPrompts(ctx context.Context, msg *protocol.Message) (
 		Cursor *models.Cursor `json:"cursor,omitempty"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid list prompts params: %w", err)
 	}
 
@@ -486,7 +625,7 @@ func (s *Server) handleGetPrompt(ctx context.Context, msg *protocol.Message) (*p
 		Arguments map[string]string `json:"arguments,omitempty"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid get prompt params: %w", err)
 	}
 
@@ -508,7 +647,7 @@ func (s *Server) handleSetLevel(ctx context.Context, msg *protocol.Message) (*pr
 		Level models.LogLevel `json:"level"`
 	}
 
-	if err := json.Unmarshal(msg.Params.(json.RawMessage), &params); err != nil {
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return nil, fmt.Errorf("invalid set level params: %w", err)
 	}
 
@@ -581,6 +720,9 @@ func (s *Server) sendNotification(notification models.Notification) {
 	select {
 	case s.notificationChan <- msg:
 		// Successfully sent notification
+	case <-s.shutdownCh:
+		// Server is shutting down, don't queue more notifications
+		s.logManager.Log(models.LogLevelDebug, "Dropping notification during shutdown", "server")
 	default:
 		// Channel is full, log warning and skip notification
 		s.logManager.Log(models.LogLevelWarning,
