@@ -65,14 +65,14 @@ func NewServer(mcpServer core.MCPServer, config *ServerConfig) *Server {
 	}
 }
 
-// isShuttingDown checks whether the server is in shutdown state
+// isShuttingDown checks whether the server is in shutdown state.
 func (s *Server) isShuttingDown() bool {
 	s.shutdownMu.RLock()
 	defer s.shutdownMu.RUnlock()
 	return s.shuttingDown
 }
 
-// handleOutgoingMessages processes messages from the queue and writes them to stdout
+// handleOutgoingMessages processes messages from the queue and writes them to stdout.
 func (s *Server) handleOutgoingMessages() {
 	defer s.wg.Done()
 	for msg := range s.messageQueue {
@@ -123,7 +123,7 @@ func (s *Server) Start() error {
 
 		case err := <-errCh:
 			if err == io.EOF {
-				fmt.Fprintf(os.Stderr, "EOF on stdin, waiting for reconnection\n")
+				return nil
 			} else {
 				// Log error but don't exit - we might recover
 				fmt.Fprintf(os.Stderr, "Error reading from stdin: %v\n", err)
@@ -279,7 +279,7 @@ func (s *Server) writeMessageToStdout(msg *protocol.Message) {
 	}
 }
 
-// processMessage handles an incoming message with proper timeout and error handling
+// processMessage handles an incoming message with proper timeout and error handling.
 func (s *Server) processMessage(msg *protocol.Message) {
 	// Check if we're shutting down first
 	if s.isShuttingDown() {

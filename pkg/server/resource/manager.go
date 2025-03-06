@@ -20,7 +20,6 @@ type Manager struct {
 	resources   map[string]*models.Resource
 	contents    map[string]string // Store resource contents in memory
 	roots       []models.Root
-	cancel      context.CancelFunc
 	subscribers map[string]map[chan<- *models.ResourceUpdatedNotification]struct{}
 	subMu       sync.RWMutex
 }
@@ -223,7 +222,7 @@ func (m *Manager) GetCompletions(uri string, argName, prefix string) ([]string, 
 	return results, false, &total, nil
 }
 
-// Shutdown performs orderly cleanup of all resources
+// Shutdown performs orderly cleanup of all resources.
 func (m *Manager) Shutdown(ctx context.Context) error {
 	// Use timeout to ensure shutdown doesn't block forever
 	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -256,7 +255,7 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// closeAllSubscriptions closes all active subscriptions
+// closeAllSubscriptions closes all active subscriptions.
 func (m *Manager) closeAllSubscriptions() {
 	m.subMu.Lock()
 	defer m.subMu.Unlock()
