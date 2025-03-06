@@ -318,7 +318,8 @@ func TestResourceSubscriptions(t *testing.T) {
 				URI string `json:"uri"`
 			} `json:"params"`
 		}
-		err = json.Unmarshal(notification.Params.(json.RawMessage), &notif)
+
+		err = json.Unmarshal(notification.Params, &notif)
 		require.NoError(t, err)
 		assert.Equal(t, resource.URI, notif.Params.URI)
 	case <-time.After(time.Second):
@@ -412,7 +413,7 @@ func TestSendNotification(t *testing.T) {
 		var params struct {
 			URI string `json:"uri"`
 		}
-		err := json.Unmarshal(msg.Params.(json.RawMessage), &params)
+		err := json.Unmarshal(msg.Params, &params)
 		require.NoError(t, err)
 
 		assert.Equal(t, "file:///test.txt", params.URI)

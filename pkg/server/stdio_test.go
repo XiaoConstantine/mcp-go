@@ -48,6 +48,10 @@ func (m *MockCoreServer) SendNotification(notif protocol.Message) {
 func (m *MockCoreServer) Close() {
 	close(m.notificationCh)
 }
+func (m *MockCoreServer) Shutdown(ctx context.Context) error {
+	// Add your mock implementation here
+	return nil
+}
 
 type SafeBuffer struct {
 	buffer *bytes.Buffer
@@ -118,10 +122,14 @@ func (r *customReader) Close() {
 
 // Test helpers.
 func createJSONRPCRequest(id interface{}, method string, params interface{}) string {
+	paramsBytes, err := json.Marshal(params)
+	if err != nil {
+		return ""
+	}
 	req := protocol.Message{
 		JSONRPC: "2.0",
 		Method:  method,
-		Params:  params,
+		Params:  json.RawMessage(paramsBytes),
 	}
 
 	if id != nil {
@@ -322,12 +330,16 @@ func TestServer_NotificationForwarding(t *testing.T) {
 
 	// Wait for server to start
 	time.Sleep(50 * time.Millisecond)
+	paramsBytes, err := json.Marshal(map[string]string{"key": "value"})
+	if err != nil {
+		t.Fatalf("Failed to marshal params: %v", err)
+	}
 
 	// Send a notification through the core server
 	notif := protocol.Message{
 		JSONRPC: "2.0",
 		Method:  "notifications/test",
-		Params:  map[string]string{"key": "value"},
+		Params:  json.RawMessage(paramsBytes),
 	}
 	mockCore.SendNotification(notif)
 

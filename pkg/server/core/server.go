@@ -84,7 +84,7 @@ func (s *Server) IsInitialized() bool {
 	return s.initialized
 }
 
-// Shutdown initiates server shutdown process
+// Shutdown initiates server shutdown process.
 func (s *Server) Shutdown(ctx context.Context) error {
 	var err error
 
@@ -200,6 +200,10 @@ func (s *Server) HandleMessage(ctx context.Context, msg *protocol.Message) (*pro
 		return s.handleGetPrompt(ctx, msg)
 	case "logging/setLevel":
 		return s.handleSetLevel(ctx, msg)
+	case "notifications/initialized":
+		return nil, nil
+	case "notifications/cancelled":
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("unsupported method: %s", msg.Method)
 	}

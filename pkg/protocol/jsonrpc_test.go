@@ -18,6 +18,10 @@ func TestRequestIDTypes(t *testing.T) {
 }
 
 func TestMessageMarshalUnmarshal(t *testing.T) {
+	paramsBytes, err := json.Marshal(map[string]interface{}{"key": "value"})
+	if err != nil {
+		t.Fatalf("Failed to marshal params: %v", err)
+	}
 	tests := []struct {
 		name    string
 		msg     Message
@@ -29,9 +33,7 @@ func TestMessageMarshalUnmarshal(t *testing.T) {
 				JSONRPC: "2.0",
 				ID:      func() *RequestID { id := RequestID("123"); return &id }(),
 				Method:  "test_method",
-				Params: map[string]interface{}{
-					"key": "value",
-				},
+				Params:  json.RawMessage(paramsBytes),
 			},
 			wantErr: false,
 		},
@@ -61,9 +63,7 @@ func TestMessageMarshalUnmarshal(t *testing.T) {
 			msg: Message{
 				JSONRPC: "2.0",
 				Method:  "test_notification",
-				Params: map[string]interface{}{
-					"key": "value",
-				},
+				Params:  json.RawMessage(paramsBytes),
 			},
 			wantErr: false,
 		},

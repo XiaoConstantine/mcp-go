@@ -284,11 +284,11 @@ func main() {
 	// Create server info
 	serverInfo := models.Implementation{
 		Name:    "git-mcp-server",
-		Version: "0.1.0",
+		Version: "0.0.1",
 	}
 
 	// Create the core MCP server
-	mcpServer := core.NewServer(serverInfo, "0.0.1")
+	mcpServer := core.NewServer(serverInfo, "2024-11-05")
 	// Use provided repository path or detect automatically
 	var repoPath string
 	var err error
