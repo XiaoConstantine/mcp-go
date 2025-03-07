@@ -92,7 +92,6 @@ func (s *Server) Start() error {
 	// Start notification forwarding goroutine
 	s.wg.Add(2)
 	go func() {
-		defer s.wg.Done()
 		s.forwardNotifications()
 	}()
 	go s.handleOutgoingMessages()
@@ -118,7 +117,6 @@ func (s *Server) Start() error {
 			fmt.Fprintln(os.Stderr, "Server received shutdown signal, waiting for final messages")
 			close(s.messageQueue)
 			s.outputSync.Wait()
-			s.wg.Wait()
 			return nil
 
 		case err := <-errCh:
@@ -167,63 +165,8 @@ func (s *Server) Start() error {
 	}
 }
 
-// func (s *Server) handleMessage(msg *protocol.Message) {
-// 	s.shutdownMu.RLock()
-// 	isShutDown := s.shuttingDown
-// 	s.shutdownMu.RUnlock()
-//
-// 	if isShutDown {
-// 		// If server is shutting down, reject the request
-// 		if msg.ID != nil {
-// 			s.writeError(msg.ID, protocol.ErrCodeShuttingDown,
-// 				"Server is shutting down", nil)
-// 		}
-// 		return
-// 	}
-// 	// Determine the appropriate timeout
-// 	timeout := s.defaultTimeout
-//
-// 	// Create a context with timeout for this request
-// 	ctx, cancel := context.WithTimeout(s.ctx, timeout)
-// 	defer cancel()
-// 	// Process the message with the timeout context
-// 	responseCh := make(chan *protocol.Message, 1)
-// 	errCh := make(chan error, 1)
-// 	go func() {
-// 		response, err := s.mcpServer.HandleMessage(ctx, msg)
-// 		if err != nil {
-// 			errCh <- err
-// 			return
-// 		}
-// 		responseCh <- response
-// 	}()
-//
-// 	select {
-// 	case <-ctx.Done():
-// 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-// 			s.writeError(msg.ID, protocol.ErrCodeServerTimeout, "Request processing timed out", nil)
-// 		} else if errors.Is(ctx.Err(), context.Canceled) {
-// 			s.writeError(msg.ID, protocol.ErrCodeShuttingDown, "Server is shutting down", nil)
-// 		}
-//
-// 		select {
-// 		case <-responseCh:
-// 		case <-errCh:
-// 		default:
-// 		}
-//
-// 	case err := <-errCh:
-// 		s.handleSpecificError(msg.ID, err)
-//
-// 	case response := <-responseCh:
-// 		// Send response if not a notification
-// 		if msg.ID != nil {
-// 			s.writeMessage(response)
-// 		}
-// 	}
-// }
-
 func (s *Server) forwardNotifications() {
+	defer s.wg.Done()
 	notifChan := s.mcpServer.Notifications()
 
 	for {
@@ -238,8 +181,12 @@ func (s *Server) forwardNotifications() {
 		case notif, ok := <-notifChan:
 			if ok {
 				s.outputSync.Add(1)
-				// s.writeMessage(&notif)
-				s.messageQueue <- &notif
+				select {
+				case s.messageQueue <- &notif:
+				default:
+					// Channel is full, can't send
+					s.outputSync.Done()
+				}
 			}
 		}
 	}
@@ -349,8 +296,19 @@ func (s *Server) enqueueError(id *protocol.RequestID, code int, message string, 
 		},
 	}
 
+	if s.isShuttingDown() && code != protocol.ErrCodeShuttingDown {
+		// Don't send non-shutdown errors during shutdown
+		return
+	}
+
 	s.outputSync.Add(1)
-	s.messageQueue <- errorResponse
+	select {
+	case s.messageQueue <- errorResponse:
+		// Message sent successfully
+	default:
+		// Channel is full or closed, unable to send
+		s.outputSync.Done()
+	}
 }
 
 func (s *Server) Stop() error {
@@ -359,10 +317,12 @@ func (s *Server) Stop() error {
 		s.shutdownMu.Unlock()
 		return nil // Already shutting down
 	}
+
+	s.shuttingDown = true
 	s.shutdownMu.Unlock()
 
 	// Create a timeout for shutdown
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	// First, initiate MCP server component shutdown
 	if err := s.mcpServer.Shutdown(shutdownCtx); err != nil {
