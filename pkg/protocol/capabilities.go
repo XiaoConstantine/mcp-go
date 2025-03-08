@@ -1,4 +1,3 @@
-// Package protocol provides the core protocol model definitions for MCP.
 package protocol
 
 // ClientCapabilities represents the set of features that a client supports.
