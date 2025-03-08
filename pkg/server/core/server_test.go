@@ -192,8 +192,6 @@ func TestServerLifecycle(t *testing.T) {
 }
 
 func TestResourceOperations(t *testing.T) {
-	// TODO: fixme
-	t.Skip()
 	server := createTestServer()
 	initializeServer(t, server)
 	ctx := context.Background()
@@ -207,7 +205,35 @@ func TestResourceOperations(t *testing.T) {
 	}
 	err := server.AddRoot(root)
 	require.NoError(t, err)
+	// Wait for the resource scanning to complete
+	// We'll poll every 100ms for up to 5 seconds to see if any resources are available
+	foundResources := false
+	for i := 0; i < 30; i++ {
+		time.Sleep(100 * time.Millisecond)
 
+		listMsg := &protocol.Message{
+			JSONRPC: "2.0",
+			ID:      createRequestID(1),
+			Method:  "resources/list",
+			Params:  json.RawMessage(`{}`),
+		}
+		resp, err := server.HandleMessage(ctx, listMsg)
+		require.NoError(t, err)
+
+		var listResult struct {
+			Resources []models.Resource `json:"resources"`
+		}
+		err = json.Unmarshal(resp.Result.(json.RawMessage), &listResult)
+		require.NoError(t, err)
+
+		if len(listResult.Resources) > 0 {
+			foundResources = true
+			break
+		}
+	}
+
+	// Confirm that we eventually found resources
+	assert.True(t, foundResources, "Failed to find resources after waiting")
 	listMsg := &protocol.Message{
 		JSONRPC: "2.0",
 		ID:      createRequestID(1),
@@ -243,7 +269,6 @@ func TestResourceOperations(t *testing.T) {
 }
 
 func TestResourceSubscriptions(t *testing.T) {
-	t.Skip()
 	server := createTestServer()
 	initializeServer(t, server)
 	ctx := context.Background()
@@ -257,7 +282,32 @@ func TestResourceSubscriptions(t *testing.T) {
 	}
 	err := server.AddRoot(root)
 	require.NoError(t, err)
+	foundResources := false
+	for i := 0; i < 30; i++ {
+		time.Sleep(100 * time.Millisecond)
 
+		listMsg := &protocol.Message{
+			JSONRPC: "2.0",
+			ID:      createRequestID(1),
+			Method:  "resources/list",
+			Params:  json.RawMessage(`{}`),
+		}
+		resp, err := server.HandleMessage(ctx, listMsg)
+		require.NoError(t, err)
+
+		var listResult struct {
+			Resources []models.Resource `json:"resources"`
+		}
+		err = json.Unmarshal(resp.Result.(json.RawMessage), &listResult)
+		require.NoError(t, err)
+
+		if len(listResult.Resources) > 0 {
+			foundResources = true
+			break
+		}
+	}
+
+	assert.True(t, foundResources, "Failed to find resources after waiting")
 	// List resources to get a resource URI
 	listMsg := &protocol.Message{
 		JSONRPC: "2.0",
@@ -291,10 +341,19 @@ func TestResourceSubscriptions(t *testing.T) {
 
 	notifications := make(chan protocol.Message, 1)
 	go func() {
-		select {
-		case msg := <-server.Notifications():
-			notifications <- msg
-		case <-time.After(time.Second):
+		// Keep checking for notifications until we find a resource update or time out
+		for {
+			select {
+			case msg := <-server.Notifications():
+				// Only forward resource update notifications
+				if msg.Method == "notifications/resources/updated" {
+					notifications <- msg
+					return
+				}
+				// Ignore other notification types and keep waiting
+			case <-time.After(2 * time.Second):
+				return // Give up after 2 seconds
+			}
 		}
 	}()
 
