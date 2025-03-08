@@ -15,7 +15,6 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/models"
 	"github.com/XiaoConstantine/mcp-go/pkg/server"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/core"
-	"github.com/XiaoConstantine/mcp-go/pkg/server/tools"
 )
 
 // GitToolHandler implements a tool handler for Git operations
@@ -34,7 +33,7 @@ func NewGitToolHandler(repoPath string) *GitToolHandler {
 func (h *GitToolHandler) ListTools() ([]models.Tool, error) {
 	return []models.Tool{
 		{
-			Name:        "status",
+			Name:        "git_status",
 			Description: "Show the working tree status",
 			InputSchema: models.InputSchema{
 				Type:       "object",
@@ -42,7 +41,7 @@ func (h *GitToolHandler) ListTools() ([]models.Tool, error) {
 			},
 		},
 		{
-			Name:        "log",
+			Name:        "git_log",
 			Description: "Show commit logs",
 			InputSchema: models.InputSchema{
 				Type: "object",
@@ -61,7 +60,7 @@ func (h *GitToolHandler) ListTools() ([]models.Tool, error) {
 			},
 		},
 		{
-			Name:        "branch",
+			Name:        "git_branch",
 			Description: "List, create, or delete branches",
 			InputSchema: models.InputSchema{
 				Type: "object",
@@ -75,7 +74,7 @@ func (h *GitToolHandler) ListTools() ([]models.Tool, error) {
 			},
 		},
 		{
-			Name:        "diff",
+			Name:        "git_diff",
 			Description: "Show changes between commits, commit and working tree, etc.",
 			InputSchema: models.InputSchema{
 				Type: "object",
@@ -89,7 +88,7 @@ func (h *GitToolHandler) ListTools() ([]models.Tool, error) {
 			},
 		},
 		{
-			Name:        "show",
+			Name:        "git_show",
 			Description: "Show various types of objects (commits, tags, etc.)",
 			InputSchema: models.InputSchema{
 				Type: "object",
@@ -103,7 +102,7 @@ func (h *GitToolHandler) ListTools() ([]models.Tool, error) {
 			},
 		},
 		{
-			Name:        "blame",
+			Name:        "git_blame",
 			Description: "Show what revision and author last modified each line of a file",
 			InputSchema: models.InputSchema{
 				Type: "object",
@@ -325,7 +324,8 @@ func main() {
 
 	// Register Git tools
 	gitHandler := NewGitToolHandler(repoPath)
-	toolsManager := tools.NewToolsManager()
+
+	toolsManager := mcpServer.ToolManager()
 	err = toolsManager.RegisterHandler("git", gitHandler)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to register Git tool handler: %v\n", err)

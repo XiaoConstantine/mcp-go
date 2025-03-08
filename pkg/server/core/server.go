@@ -77,6 +77,18 @@ func NewServer(info models.Implementation, version string) *Server {
 	return server
 }
 
+func (s *Server) ToolManager() *tools.ToolsManager {
+	return s.toolsManager
+}
+
+func (s *Server) PromptManager() *prompt.Manager {
+	return s.promptManager
+}
+
+func (s *Server) ResourceManager() *resource.Manager {
+	return s.resourceManager
+}
+
 // IsInitialized returns whether the server has been initialized.
 func (s *Server) IsInitialized() bool {
 	s.mu.RLock()
@@ -212,7 +224,7 @@ func (s *Server) HandleMessage(ctx context.Context, msg *protocol.Message) (*pro
 func (s *Server) createResponse(id *protocol.RequestID, result interface{}) (*protocol.Message, error) {
 	resultBytes, err := json.Marshal(result)
 
-	fmt.Fprintf(os.Stderr, "Response JSON: %s\n", string(resultBytes))
+	//	fmt.Fprintf(os.Stderr, "Response JSON: %s\n", string(resultBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response: %w", err)
 	}
@@ -235,7 +247,7 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 			ProtocolVersion string                      `json:"protocolVersion"`
 		}
 
-		fmt.Fprintf(os.Stderr, "Unmarshaling initialization params...\n")
+		s.logManager.Log(models.LogLevelDebug, "Unmarshaling initialization params...\n", "server")
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			initErr = fmt.Errorf("invalid initialize params: %w", err)
 
@@ -243,19 +255,18 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 			return
 		}
 
-		fmt.Fprintf(os.Stderr, "Protocol version: %s\n", params.ProtocolVersion)
-		fmt.Fprintf(os.Stderr, "Client info: %s v%s\n", params.ClientInfo.Name, params.ClientInfo.Version)
+		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Protocol version: %s\n", params.ProtocolVersion), "server")
+		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Client info: %s v%s\n", params.ClientInfo.Name, params.ClientInfo.Version), "server")
 		s.mu.Lock()
 		s.initialized = true
 		s.mu.Unlock()
 
 		initialized = true
 
-		fmt.Fprintf(os.Stderr, "Initialization completed successfully\n")
+		s.logManager.Log(models.LogLevelDebug, "Initialization completed successfully\n", "server")
 	})
 
 	if initErr != nil {
-
 		fmt.Fprintf(os.Stderr, "Initialization failed: %v\n", initErr)
 		return nil, initErr
 	}

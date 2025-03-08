@@ -43,7 +43,6 @@ func (tm *ToolsManager) RegisterHandler(namespace string, handler ToolHandler) e
 	if err != nil {
 		return fmt.Errorf("failed to list tools for namespace %s: %v", namespace, err)
 	}
-
 	// Add namespace prefix to tool names if not already present
 	for i := range tools {
 		if !strings.HasPrefix(tools[i].Name, namespace+"_") {
