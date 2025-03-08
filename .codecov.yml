@@ -18,6 +18,7 @@ coverage:
 # Ignore coverage for files and pkg
 ignore:
   - "pkg/protocol/*.go"
+  - "examples/*"
   - "*.md"
   - "*.yml"
   - "*.yaml"
