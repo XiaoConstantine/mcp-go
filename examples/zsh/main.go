@@ -353,19 +353,19 @@ func formatOutput(output string) (string, int) {
 // CallTool executes a Zsh tool with the given arguments
 func (h *ZshToolHandler) CallTool(name string, arguments map[string]interface{}) (*models.CallToolResult, error) {
 	switch name {
-	case "zsh_execute":
+	case "execute":
 		return h.handleExecute(arguments)
-	case "zsh_history":
+	case "history":
 		return h.handleHistory(arguments)
-	case "zsh_alias":
+	case "alias":
 		return h.handleAlias(arguments)
-	case "zsh_env":
+	case "env":
 		return h.handleEnv(arguments)
-	case "zsh_which":
+	case "which":
 		return h.handleWhich(arguments)
-	case "zsh_config":
+	case "config":
 		return h.handleConfig(arguments)
-	case "zsh_glob":
+	case "glob":
 		return h.handleGlob(arguments)
 	default:
 		return nil, fmt.Errorf("unknown zsh tool: %s", name)
