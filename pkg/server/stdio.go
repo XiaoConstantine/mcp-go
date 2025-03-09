@@ -210,7 +210,7 @@ func (s *Server) writeMessageToStdout(msg *protocol.Message) {
 
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
-		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error marshaling message: %v\n", err), "stdio")
+		fmt.Fprintf(os.Stderr, "Error marshaling message: %v\n", err)
 		return
 	}
 	// Use a mutex to synchronize writes to stdout
@@ -218,16 +218,15 @@ func (s *Server) writeMessageToStdout(msg *protocol.Message) {
 	defer s.mu.Unlock()
 
 	if _, err := s.writer.Write(msgBytes); err != nil {
-		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error writing message: %v\n", err), "stdio")
-
+		fmt.Fprintf(os.Stderr, "Error writing message: %v\n", err)
 		return
 	}
 	if err := s.writer.WriteByte('\n'); err != nil {
-		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error writing newline: %v\n", err), "stdio")
+		fmt.Fprintf(os.Stderr, "Error writing newline: %v\n", err)
 		return
 	}
 	if err := s.writer.Flush(); err != nil {
-		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error flushing writer: %v\n", err), "stdio")
+		fmt.Fprintf(os.Stderr, "Error flushing writer: %v\n", err)
 		return
 	}
 }
