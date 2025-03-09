@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/XiaoConstantine/mcp-go/pkg/model"
 )
 
 func TestNewManager(t *testing.T) {

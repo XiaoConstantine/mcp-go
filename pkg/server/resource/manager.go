@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/XiaoConstantine/mcp-go/pkg/model"
 )
 
 // Manager handles resource operations and maintains resource state.

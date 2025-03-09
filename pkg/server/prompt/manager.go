@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/XiaoConstantine/mcp-go/pkg/model"
 )
 
 // Manager handles prompt operations and maintains prompt state.

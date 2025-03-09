@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/XiaoConstantine/mcp-go/pkg/model"
 	"github.com/XiaoConstantine/mcp-go/pkg/server"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/core"
 )
 
-// ZshPersistentShell manages a persistent Zsh shell process
+// ZshPersistentShell manages a persistent Zsh shell process.
 type ZshPersistentShell struct {
 	cmd       *exec.Cmd
 	stdin     *bytes.Buffer
@@ -29,18 +29,20 @@ type ZshPersistentShell struct {
 	mu        sync.Mutex // For thread safety
 }
 
-// GetInstance returns the singleton instance of ZshPersistentShell
+// GetInstance returns the singleton instance of ZshPersistentShell.
 func (s *ZshPersistentShell) GetInstance() *ZshPersistentShell {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if !s.isRunning {
-		s.start()
+		if err := s.start(); err != nil {
+			return nil
+		}
 	}
 	return s
 }
 
-// start initializes and starts the Zsh shell process
+// start initializes and starts the Zsh shell process.
 func (s *ZshPersistentShell) start() error {
 	// Initialize with home directory as default
 	homeDir, err := os.UserHomeDir()
@@ -68,7 +70,7 @@ func (s *ZshPersistentShell) start() error {
 	return nil
 }
 
-// setCwd changes the current working directory of the shell
+// setCwd changes the current working directory of the shell.
 func (s *ZshPersistentShell) setCwd(dir string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -84,7 +86,7 @@ func (s *ZshPersistentShell) setCwd(dir string) error {
 	return nil
 }
 
-// exec executes a command in the shell with timeout and cancellation support
+// exec executes a command in the shell with timeout and cancellation support.
 func (s *ZshPersistentShell) exec(cmd string, signal context.Context, timeout time.Duration) (string, string, int, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -126,7 +128,7 @@ func (s *ZshPersistentShell) exec(cmd string, signal context.Context, timeout ti
 	}
 }
 
-// cleanup terminates the shell process
+// cleanup terminates the shell process.
 func (s *ZshPersistentShell) cleanup() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -147,14 +149,14 @@ func (s *ZshPersistentShell) cleanup() error {
 	return nil
 }
 
-// ZshToolHandler implements a tool handler for Zsh shell operations
+// ZshToolHandler implements a tool handler for Zsh shell operations.
 type ZshToolHandler struct {
 	shell          *ZshPersistentShell
 	originalCwd    string
 	bannedCommands []string
 }
 
-// NewZshToolHandler creates a new Zsh tool handler
+// NewZshToolHandler creates a new Zsh tool handler.
 func NewZshToolHandler() *ZshToolHandler {
 	cwd, _ := os.Getwd()
 
@@ -169,7 +171,7 @@ func NewZshToolHandler() *ZshToolHandler {
 	}
 }
 
-// ListTools returns a list of available Zsh tools
+// ListTools returns a list of available Zsh tools.
 func (h *ZshToolHandler) ListTools() ([]models.Tool, error) {
 	return []models.Tool{
 		{
@@ -287,7 +289,7 @@ func (h *ZshToolHandler) ListTools() ([]models.Tool, error) {
 	}, nil
 }
 
-// validateCommand checks if a command is safe to execute
+// validateCommand checks if a command is safe to execute.
 func (h *ZshToolHandler) validateCommand(command string) error {
 	// Check for banned commands
 	for _, banned := range h.bannedCommands {
@@ -324,7 +326,7 @@ func (h *ZshToolHandler) validateCommand(command string) error {
 	return nil
 }
 
-// isInAllowedDirectory checks if a path is within an allowed directory
+// isInAllowedDirectory checks if a path is within an allowed directory.
 func isInAllowedDirectory(path, basePath string) bool {
 	// Get relative path
 	rel, err := filepath.Rel(basePath, path)
@@ -336,7 +338,7 @@ func isInAllowedDirectory(path, basePath string) bool {
 	return !strings.HasPrefix(rel, "..") && rel != ".."
 }
 
-// formatOutput truncates long output and tracks original line count
+// formatOutput truncates long output and tracks original line count.
 func formatOutput(output string) (string, int) {
 	lines := strings.Split(output, "\n")
 	lineCount := len(lines)
@@ -350,7 +352,7 @@ func formatOutput(output string) (string, int) {
 	return output, lineCount
 }
 
-// CallTool executes a Zsh tool with the given arguments
+// CallTool executes a Zsh tool with the given arguments.
 func (h *ZshToolHandler) CallTool(name string, arguments map[string]interface{}) (*models.CallToolResult, error) {
 	switch name {
 	case "execute":
@@ -372,7 +374,7 @@ func (h *ZshToolHandler) CallTool(name string, arguments map[string]interface{})
 	}
 }
 
-// handleExecute implements the zsh_execute tool
+// handleExecute implements the zsh_execute tool.
 func (h *ZshToolHandler) handleExecute(arguments map[string]interface{}) (*models.CallToolResult, error) {
 	// Extract command
 	command, ok := arguments["command"].(string)
@@ -434,7 +436,9 @@ func (h *ZshToolHandler) handleExecute(arguments map[string]interface{}) (*model
 	// Check if shell navigated outside allowed directory
 	if !isInAllowedDirectory(h.shell.cwd, h.originalCwd) {
 		// Reset to original directory
-		h.shell.setCwd(h.originalCwd)
+		if err := h.shell.setCwd(h.originalCwd); err != nil {
+			return nil, err
+		}
 		resultText += "\nWARNING: Shell directory was reset to original directory for security."
 		isError = true
 	}
@@ -448,7 +452,7 @@ func (h *ZshToolHandler) handleExecute(arguments map[string]interface{}) (*model
 	}, nil
 }
 
-// handleHistory implements the zsh_history tool
+// handleHistory implements the zsh_history tool.
 func (h *ZshToolHandler) handleHistory(arguments map[string]interface{}) (*models.CallToolResult, error) {
 	limit := 10 // Default limit
 	if limitArg, ok := arguments["limit"].(float64); ok {
@@ -481,7 +485,7 @@ func (h *ZshToolHandler) handleHistory(arguments map[string]interface{}) (*model
 	}, nil
 }
 
-// handleAlias implements the zsh_alias tool
+// handleAlias implements the zsh_alias tool.
 func (h *ZshToolHandler) handleAlias(arguments map[string]interface{}) (*models.CallToolResult, error) {
 	command := "alias"
 
@@ -509,7 +513,7 @@ func (h *ZshToolHandler) handleAlias(arguments map[string]interface{}) (*models.
 	}, nil
 }
 
-// handleEnv implements the zsh_env tool
+// handleEnv implements the zsh_env tool.
 func (h *ZshToolHandler) handleEnv(arguments map[string]interface{}) (*models.CallToolResult, error) {
 	var command string
 
@@ -543,7 +547,7 @@ func (h *ZshToolHandler) handleEnv(arguments map[string]interface{}) (*models.Ca
 	}, nil
 }
 
-// handleWhich implements the zsh_which tool
+// handleWhich implements the zsh_which tool.
 func (h *ZshToolHandler) handleWhich(arguments map[string]interface{}) (*models.CallToolResult, error) {
 	command, ok := arguments["command"].(string)
 	if !ok || command == "" {
@@ -574,7 +578,7 @@ func (h *ZshToolHandler) handleWhich(arguments map[string]interface{}) (*models.
 	}, nil
 }
 
-// handleConfig implements the zsh_config tool
+// handleConfig implements the zsh_config tool.
 func (h *ZshToolHandler) handleConfig(arguments map[string]interface{}) (*models.CallToolResult, error) {
 	action, ok := arguments["action"].(string)
 	if !ok || action == "" {
@@ -649,7 +653,7 @@ func (h *ZshToolHandler) handleConfig(arguments map[string]interface{}) (*models
 	}, nil
 }
 
-// handleGlob implements the zsh_glob tool
+// handleGlob implements the zsh_glob tool.
 func (h *ZshToolHandler) handleGlob(arguments map[string]interface{}) (*models.CallToolResult, error) {
 	pattern, ok := arguments["pattern"].(string)
 	if !ok || pattern == "" {
@@ -770,7 +774,9 @@ to subdirectories of the original working directory.
 		// Server completed on its own (likely due to client disconnect)
 		fmt.Fprintln(os.Stderr, "Server stopped, performing cleanup...")
 		// Clean up persistent shell
-		zshHandler.shell.cleanup()
+		if err := zshHandler.shell.cleanup(); err != nil {
+			os.Exit(1)
+		}
 		// Still call Stop() to ensure all resources are released
 		if err := stdioServer.Stop(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error during cleanup: %v\n", err)
@@ -778,7 +784,10 @@ to subdirectories of the original working directory.
 	case <-c:
 		fmt.Fprintln(os.Stderr, "\nReceived termination signal, shutting down...")
 		// Clean up persistent shell
-		zshHandler.shell.cleanup()
+		if err := zshHandler.shell.cleanup(); err != nil {
+			os.Exit(1)
+		}
+
 		if err := stdioServer.Stop(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error during shutdown: %v\n", err)
 			os.Exit(1)

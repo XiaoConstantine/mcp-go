@@ -12,24 +12,24 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/XiaoConstantine/mcp-go/pkg/model"
 	"github.com/XiaoConstantine/mcp-go/pkg/server"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/core"
 )
 
-// GitToolHandler implements a tool handler for Git operations
+// GitToolHandler implements a tool handler for Git operations.
 type GitToolHandler struct {
 	repoPath string
 }
 
-// NewGitToolHandler creates a new Git tool handler for the given repository
+// NewGitToolHandler creates a new Git tool handler for the given repository.
 func NewGitToolHandler(repoPath string) *GitToolHandler {
 	return &GitToolHandler{
 		repoPath: repoPath,
 	}
 }
 
-// ListTools returns a list of available Git tools
+// ListTools returns a list of available Git tools.
 func (h *GitToolHandler) ListTools() ([]models.Tool, error) {
 	return []models.Tool{
 		{
@@ -118,7 +118,7 @@ func (h *GitToolHandler) ListTools() ([]models.Tool, error) {
 	}, nil
 }
 
-// runGitCommand executes a git command and returns its output
+// runGitCommand executes a git command and returns its output.
 func (h *GitToolHandler) runGitCommand(ctx context.Context, args ...string) (string, error) {
 	// Create the command
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -138,7 +138,7 @@ func (h *GitToolHandler) runGitCommand(ctx context.Context, args ...string) (str
 	return stdout.String(), nil
 }
 
-// CallTool executes a Git tool with the given arguments
+// CallTool executes a Git tool with the given arguments.
 func (h *GitToolHandler) CallTool(name string, arguments map[string]interface{}) (*models.CallToolResult, error) {
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -227,7 +227,7 @@ func (h *GitToolHandler) CallTool(name string, arguments map[string]interface{})
 }
 
 // detectGitRepository attempts to find a Git repository in the current directory
-// or its parent directories
+// or its parent directories.
 func detectGitRepository() (string, error) {
 	// Start with the current directory
 	dir, err := os.Getwd()
@@ -254,7 +254,7 @@ func detectGitRepository() (string, error) {
 	return "", fmt.Errorf("no Git repository found in the current directory or its parents")
 }
 
-// addGitResourceRoots adds Git repository structure as roots to the MCP server
+// addGitResourceRoots adds Git repository structure as roots to the MCP server.
 func addGitResourceRoots(mcpServer *core.Server, repoPath string) error {
 	// Add the main repository root
 	root := models.Root{
@@ -268,7 +268,7 @@ func addGitResourceRoots(mcpServer *core.Server, repoPath string) error {
 	return nil
 }
 
-// setupGitPrompts adds Git-related prompts to the prompt manager
+// setupGitPrompts adds Git-related prompts to the prompt manager.
 func setupGitPrompts(mcpServer *core.Server) {
 	// This would be implemented to add Git-specific prompt templates
 	// to help the client understand how to work with the Git repository

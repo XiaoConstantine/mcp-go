@@ -3,7 +3,7 @@ package logging
 import (
 	"sync"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/XiaoConstantine/mcp-go/pkg/model"
 )
 
 // Manager handles logging operations and level control.

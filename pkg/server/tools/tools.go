@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/XiaoConstantine/mcp-go/pkg/model"
 )
 
 // ToolHandler represents a handler for tool-related operations.

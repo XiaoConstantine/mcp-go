@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/models"
+	"github.com/XiaoConstantine/mcp-go/pkg/model"
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/logging"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/prompt"
