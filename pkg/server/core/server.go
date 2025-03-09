@@ -22,12 +22,19 @@ type MCPServer interface {
 	Shutdown(ctx context.Context) error
 }
 
+// ServerOptions provides configuration options for creating a new Server.
+type ServerOptions struct {
+	Info         models.Implementation
+	Version      string
+	Instructions string
+}
+
 // Server represents the core MCP server, integrating various capabilities.
 type Server struct {
-	info     models.Implementation
-	version  string
-	initOnce sync.Once
-
+	info             models.Implementation
+	version          string
+	initOnce         sync.Once
+	instructions     string
 	shutdownOnce     sync.Once
 	shutdownCh       chan struct{}
 	initialized      bool
@@ -43,11 +50,17 @@ type Server struct {
 	logManager    *logging.Manager
 }
 
-// NewServer creates a new MCP server instance with the specified implementation details.
-func NewServer(info models.Implementation, version string) *Server {
+// NewServerWithOptions creates a new server with the specified options.
+func NewServerWithOptions(options ServerOptions) *Server {
+	instructions := fmt.Sprintf("MCP Server %s - Ready for requests", options.Version)
+	if options.Instructions != "" {
+		instructions = options.Instructions
+	}
+
 	server := &Server{
-		info:             info,
-		version:          version,
+		info:             options.Info,
+		version:          options.Version,
+		instructions:     instructions,
 		resourceManager:  resource.NewManager(),
 		toolsManager:     tools.NewToolsManager(),
 		promptManager:    prompt.NewManager(),
@@ -68,12 +81,22 @@ func NewServer(info models.Implementation, version string) *Server {
 			Logging: map[string]interface{}{},
 		},
 	}
+
+	// Setup logging notification sink
 	server.logManager.SetSink(func(level models.LogLevel, data interface{}, logger string) {
 		notification := models.NewLoggingMessageNotification(level, data, logger)
 		server.sendNotification(notification)
 	})
 
 	return server
+}
+
+// NewServer creates a new MCP server instance with the specified implementation details.
+func NewServer(info models.Implementation, version string) *Server {
+	return NewServerWithOptions(ServerOptions{
+		Info:    info,
+		Version: version,
+	})
 }
 
 func (s *Server) ToolManager() *tools.ToolsManager {
@@ -174,6 +197,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	})
 
 	return err
+}
+
+// SetInstructions updates the server's instructions that are sent to clients.
+func (s *Server) SetInstructions(instructions string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.instructions = instructions
+}
+
+// GetInstructions returns the current server instructions.
+func (s *Server) GetInstructions() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.instructions
 }
 
 // HandleMessage processes incoming MCP messages and returns appropriate responses.
@@ -277,7 +314,7 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 		Capabilities:    s.capabilities,
 		ProtocolVersion: s.version,
 		ServerInfo:      s.info,
-		Instructions:    fmt.Sprintf("MCP Server %s - Ready for requests", s.version),
+		Instructions:    s.GetInstructions(),
 	}
 
 	return s.createResponse(msg.ID, result)
