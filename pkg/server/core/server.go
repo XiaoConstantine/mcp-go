@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -224,7 +223,6 @@ func (s *Server) HandleMessage(ctx context.Context, msg *protocol.Message) (*pro
 func (s *Server) createResponse(id *protocol.RequestID, result interface{}) (*protocol.Message, error) {
 	resultBytes, err := json.Marshal(result)
 
-	//	fmt.Fprintf(os.Stderr, "Response JSON: %s\n", string(resultBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response: %w", err)
 	}
@@ -251,7 +249,7 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			initErr = fmt.Errorf("invalid initialize params: %w", err)
 
-			fmt.Fprintf(os.Stderr, "Initialization parameter error: %v\n", err)
+			s.logManager.Log(models.LogLevelDebug, initErr, "server")
 			return
 		}
 
@@ -267,17 +265,13 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 	})
 
 	if initErr != nil {
-		fmt.Fprintf(os.Stderr, "Initialization failed: %v\n", initErr)
+		s.logManager.Log(models.LogLevelDebug, initErr, "server")
 		return nil, initErr
 	}
 
 	if !initialized {
-
-		fmt.Fprintf(os.Stderr, "Server already initialized\n")
 		return nil, fmt.Errorf("server already initialized")
 	}
-
-	fmt.Fprintf(os.Stderr, "Creating initialization response...\n")
 
 	result := models.InitializeResult{
 		Capabilities:    s.capabilities,
@@ -286,7 +280,6 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 		Instructions:    fmt.Sprintf("MCP Server %s - Ready for requests", s.version),
 	}
 
-	fmt.Fprintf(os.Stderr, "Sending initialization response...\n")
 	return s.createResponse(msg.ID, result)
 }
 
@@ -537,8 +530,6 @@ func (s *Server) AddRoot(root models.Root) error {
 			// Exit early if server is shutting down
 			return
 		default:
-			fmt.Fprintf(os.Stderr, "Starting asynchronous addition of root %s...\n", root.URI)
-
 			// Continue with resource scan
 			if err := s.resourceManager.AddRoot(root); err != nil {
 				// Error logging...

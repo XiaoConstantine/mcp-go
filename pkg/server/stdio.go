@@ -12,8 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/XiaoConstantine/mcp-go/pkg/models"
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/core"
+	"github.com/XiaoConstantine/mcp-go/pkg/server/logging"
 )
 
 // Server represents an MCP server that communicates over STDIO.
@@ -32,6 +34,8 @@ type Server struct {
 	outputSync   *sync.WaitGroup
 
 	messageQueue chan *protocol.Message
+
+	logManager *logging.Manager
 }
 
 // ServerConfig holds configuration options for the STDIO server.
@@ -62,6 +66,7 @@ func NewServer(mcpServer core.MCPServer, config *ServerConfig) *Server {
 		defaultTimeout: config.DefaultTimeout,
 		outputSync:     &sync.WaitGroup{},
 		messageQueue:   make(chan *protocol.Message, 100),
+		logManager:     logging.NewManager(),
 	}
 }
 
@@ -114,7 +119,7 @@ func (s *Server) Start() error {
 		select {
 		case <-s.ctx.Done():
 			// Server is shutting down
-			fmt.Fprintln(os.Stderr, "Server received shutdown signal, waiting for final messages")
+			s.logManager.Log(models.LogLevelDebug, "Server received shutdown signal, waiting for final messages", "stdio")
 			close(s.messageQueue)
 			s.outputSync.Wait()
 			return nil
@@ -124,7 +129,7 @@ func (s *Server) Start() error {
 				return nil
 			} else {
 				// Log error but don't exit - we might recover
-				fmt.Fprintf(os.Stderr, "Error reading from stdin: %v\n", err)
+				s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error reading from stdin: %v\n", err), "stdio")
 
 			}
 			continue
@@ -205,7 +210,7 @@ func (s *Server) writeMessageToStdout(msg *protocol.Message) {
 
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling message: %v\n", err)
+		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error marshaling message: %v\n", err), "stdio")
 		return
 	}
 	// Use a mutex to synchronize writes to stdout
@@ -213,15 +218,16 @@ func (s *Server) writeMessageToStdout(msg *protocol.Message) {
 	defer s.mu.Unlock()
 
 	if _, err := s.writer.Write(msgBytes); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing message: %v\n", err)
+		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error writing message: %v\n", err), "stdio")
+
 		return
 	}
 	if err := s.writer.WriteByte('\n'); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing newline: %v\n", err)
+		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error writing newline: %v\n", err), "stdio")
 		return
 	}
 	if err := s.writer.Flush(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error flushing writer: %v\n", err)
+		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error flushing writer: %v\n", err), "stdio")
 		return
 	}
 }
@@ -326,8 +332,7 @@ func (s *Server) Stop() error {
 	defer shutdownCancel()
 	// First, initiate MCP server component shutdown
 	if err := s.mcpServer.Shutdown(shutdownCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error during MCP server shutdown: %v\n", err)
-		// Continue with shutdown anyway
+		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error during MCP server shutdown: %v\n", err), "stdio")
 	}
 
 	// Give a brief moment for any pending messages to be rejected
@@ -368,7 +373,6 @@ func (s *Server) handleSpecificError(id *protocol.RequestID, err error) {
 		errStr := err.Error()
 		switch {
 		case contains(errStr, "method not found", "unknown method", "unsupported method"):
-			fmt.Fprintf(os.Stderr, "Method not found: %s\n", errStr)
 			code = protocol.ErrCodeMethodNotFound
 			message = "Method not found"
 		case contains(errStr, "invalid params", "missing parameter", "invalid argument"):
