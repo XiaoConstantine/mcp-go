@@ -1,28 +1,24 @@
 package server
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/model"
+	"github.com/XiaoConstantine/mcp-go/pkg/logging"
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/core"
-	"github.com/XiaoConstantine/mcp-go/pkg/server/logging"
+	"github.com/XiaoConstantine/mcp-go/pkg/transport"
 )
 
 // Server represents an MCP server that communicates over STDIO.
 type Server struct {
 	mcpServer      core.MCPServer
-	reader         *bufio.Reader
-	writer         *bufio.Writer
+	transport      transport.Transport
 	mu             sync.Mutex
 	wg             sync.WaitGroup
 	ctx            context.Context
@@ -35,18 +31,20 @@ type Server struct {
 
 	messageQueue chan *protocol.Message
 
-	logManager *logging.Manager
+	logger logging.Logger
 }
 
 // ServerConfig holds configuration options for the STDIO server.
 type ServerConfig struct {
-	DefaultTimeout time.Duration // Default timeout for request processing
+	DefaultTimeout time.Duration  // Default timeout for request processing
+	Logger         logging.Logger // Logger for server messages
 }
 
 // DefaultServerConfig provides reasonable default configuration values.
 func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
 		DefaultTimeout: 30 * time.Second,
+		Logger:         logging.NewStdLogger(logging.InfoLevel),
 	}
 }
 
@@ -57,16 +55,17 @@ func NewServer(mcpServer core.MCPServer, config *ServerConfig) *Server {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+
+	stdioTransport := transport.NewStdioTransport(os.Stdin, os.Stdout)
 	return &Server{
 		mcpServer:      mcpServer,
-		reader:         bufio.NewReader(os.Stdin),
-		writer:         bufio.NewWriter(os.Stdout),
+		transport:      stdioTransport,
 		ctx:            ctx,
 		cancel:         cancel,
 		defaultTimeout: config.DefaultTimeout,
 		outputSync:     &sync.WaitGroup{},
 		messageQueue:   make(chan *protocol.Message, 100),
-		logManager:     logging.NewManager(),
+		logger:         config.Logger,
 	}
 }
 
@@ -81,7 +80,7 @@ func (s *Server) isShuttingDown() bool {
 func (s *Server) handleOutgoingMessages() {
 	defer s.wg.Done()
 	for msg := range s.messageQueue {
-		s.writeMessageToStdout(msg)
+		s.sendMessage(msg)
 	}
 }
 
@@ -100,72 +99,48 @@ func (s *Server) Start() error {
 		s.forwardNotifications()
 	}()
 	go s.handleOutgoingMessages()
-	stdinReader := bufio.NewReader(os.Stdin)
-	// Use a separate reader to allow for cancellation
-	readCh := make(chan string)
-	errCh := make(chan error)
 	// Main message processing loop
 	for {
-		// Start a goroutine to read the next message
-		go func() {
-			line, err := stdinReader.ReadString('\n')
-			if err != nil {
-				errCh <- err
-				return
-			}
-			readCh <- line
-		}()
-		// Wait for either a message, an error, or shutdown signal
 		select {
 		case <-s.ctx.Done():
 			// Server is shutting down
-			s.logManager.Log(models.LogLevelDebug, "Server received shutdown signal, waiting for final messages", "stdio")
+			s.logger.Debug("Server received shutdown signal, waiting for final messages")
 			close(s.messageQueue)
 			s.outputSync.Wait()
 			return nil
-
-		case err := <-errCh:
-			if err == io.EOF {
-				return nil
-			} else {
-				// Log error but don't exit - we might recover
-				s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error reading from stdin: %v\n", err), "stdio")
-
-			}
-			continue
-
-		case line := <-readCh:
-			// Process the message
-			var message protocol.Message
-			if err := json.Unmarshal([]byte(line), &message); err != nil {
-				errorMsg := &protocol.Message{
-					JSONRPC: "2.0",
-					Error: &protocol.ErrorObject{
-						Code:    protocol.ErrCodeParseError,
-						Message: "Parse error",
-						Data: map[string]interface{}{
-							"error": err.Error(),
-							"line":  line,
-						},
-					},
-				}
-				s.outputSync.Add(1)
-				s.messageQueue <- errorMsg
-				// For tests: if this is a "STOP" message, gracefully exit
-				if strings.Contains(line, "\"method\":\"test/stop\"") {
-					s.outputSync.Wait()
-					return nil
-				}
-
+		default:
+		}
+		ctx, cancel := context.WithTimeout(s.ctx, 100*time.Millisecond)
+		msg, err := s.transport.Receive(ctx)
+		cancel()
+		if err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				// This is just a timeout for polling, continue
 				continue
 			}
-			// Process the message in a goroutine with timeout
-			s.wg.Add(1)
-			go func(msg protocol.Message) {
-				defer s.wg.Done()
-				s.processMessage(&msg)
-			}(message)
+
+			if err == io.EOF {
+				// End of input stream, exit gracefully
+				return nil
+			}
+
+			// Log other errors but don't exit
+			s.logger.Debug("Error receiving message: %v", err)
+			continue
 		}
+
+		// Handle special test message
+		if msg.Method == "test/stop" {
+			s.outputSync.Wait()
+			return nil
+		}
+
+		// Process the message in a goroutine with timeout
+		s.wg.Add(1)
+		go func(msg *protocol.Message) {
+			defer s.wg.Done()
+			s.processMessage(msg)
+		}(msg)
 
 	}
 }
@@ -197,37 +172,34 @@ func (s *Server) forwardNotifications() {
 	}
 }
 
-func (s *Server) writeMessageToStdout(msg *protocol.Message) {
+func (s *Server) sendMessage(msg *protocol.Message) {
 	defer s.outputSync.Done()
-	// Check if we should allow this message during shutdown
-	if s.isShuttingDown() {
-		// Only allow shutdown error messages during shutdown
+
+	s.shutdownMu.RLock()
+	shuttingDown := s.shuttingDown
+	s.shutdownMu.RUnlock()
+	// Keep the shutdown check logic
+	if shuttingDown {
 		isShutdownError := msg.Error != nil && msg.Error.Code == protocol.ErrCodeShuttingDown
 		if !isShutdownError {
 			return
 		}
 	}
+	localCtx := context.Background()
+	if s.ctx != nil {
+		localCtx = s.ctx
+	}
 
-	msgBytes, err := json.Marshal(msg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error marshaling message: %v\n", err)
-		return
-	}
-	// Use a mutex to synchronize writes to stdout
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(localCtx, 5*time.Second)
+	defer cancel()
 
-	if _, err := s.writer.Write(msgBytes); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing message: %v\n", err)
-		return
-	}
-	if err := s.writer.WriteByte('\n'); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing newline: %v\n", err)
-		return
-	}
-	if err := s.writer.Flush(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error flushing writer: %v\n", err)
-		return
+	// Use the transport to send the message
+	if err := s.transport.Send(ctx, msg); err != nil {
+		// Keep similar error logging
+		s.logger.Error("Failed to send message",
+			"error", err,
+			"message_id", msg.ID)
 	}
 }
 
@@ -331,7 +303,7 @@ func (s *Server) Stop() error {
 	defer shutdownCancel()
 	// First, initiate MCP server component shutdown
 	if err := s.mcpServer.Shutdown(shutdownCtx); err != nil {
-		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Error during MCP server shutdown: %v\n", err), "stdio")
+		s.logger.Debug("Error during MCP server shutdown: %v\n", err)
 	}
 
 	// Give a brief moment for any pending messages to be rejected
