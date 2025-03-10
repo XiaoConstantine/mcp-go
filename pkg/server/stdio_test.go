@@ -16,15 +16,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// writerAdapter adapts a write function to implement io.Writer.
-type writerAdapter struct {
-	writeFn func(p []byte) (n int, err error)
-}
-
-func (w *writerAdapter) Write(p []byte) (n int, err error) {
-	return w.writeFn(p)
-}
-
 // MockMCPServer is a mock implementation of the MCPServer interface.
 type MockMCPServer struct {
 	mock.Mock

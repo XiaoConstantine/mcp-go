@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Common sentinel errors
+// Common sentinel errors.
 var (
 	ErrNotInitialized = errors.New("client not initialized")
 	ErrConnClosed     = errors.New("connection closed")
