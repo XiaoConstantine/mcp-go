@@ -14,7 +14,7 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 )
 
-// mockReader implements io.Reader for testing with controlled errors
+// mockReader implements io.Reader for testing with controlled errors.
 type mockReader struct {
 	data      string
 	index     int
@@ -39,7 +39,7 @@ func (m *mockReader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-// mockWriter implements io.Writer for testing with controlled errors
+// mockWriter implements io.Writer for testing with controlled errors.
 type mockWriter struct {
 	buffer    strings.Builder
 	err       error
@@ -54,7 +54,7 @@ func (m *mockWriter) Write(p []byte) (n int, err error) {
 	return m.buffer.Write(p)
 }
 
-// TestNewStdioTransport tests the NewStdioTransport function
+// TestNewStdioTransport tests the NewStdioTransport function.
 func TestNewStdioTransport(t *testing.T) {
 	// Test with nil logger
 	reader := strings.NewReader("test")
@@ -73,7 +73,7 @@ func TestNewStdioTransport(t *testing.T) {
 	}
 }
 
-// TestStdioTransportSend tests the Send method
+// TestStdioTransportSend tests the Send method.
 func TestStdioTransportSend(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -143,7 +143,7 @@ func TestStdioTransportSend(t *testing.T) {
 	}
 }
 
-// TestStdioTransportReceive tests the Receive method
+// TestStdioTransportReceive tests the Receive method.
 func TestStdioTransportReceive(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -216,7 +216,7 @@ func TestStdioTransportReceive(t *testing.T) {
 	}
 }
 
-// TestStdioTransportClose tests the Close method
+// TestStdioTransportClose tests the Close method.
 func TestStdioTransportClose(t *testing.T) {
 	transport := NewStdioTransport(strings.NewReader(""), &strings.Builder{}, logging.NewNoopLogger())
 
@@ -226,7 +226,7 @@ func TestStdioTransportClose(t *testing.T) {
 	}
 }
 
-// TestFullMessageCycle tests sending and receiving a complete message cycle
+// TestFullMessageCycle tests sending and receiving a complete message cycle.
 func TestFullMessageCycle(t *testing.T) {
 	// Create a pipe for bidirectional communication
 	reader, writer := io.Pipe()
@@ -294,7 +294,7 @@ func TestFullMessageCycle(t *testing.T) {
 	}
 }
 
-// Helper function to create a protocol.RequestID
+// Helper function to create a protocol.RequestID.
 func getRequestID(id int) *protocol.RequestID {
 	reqID := protocol.RequestID(id)
 	return &reqID
