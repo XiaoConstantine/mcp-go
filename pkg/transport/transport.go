@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/XiaoConstantine/mcp-go/pkg/logging"
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 )
 
@@ -28,13 +29,18 @@ type StdioTransport struct {
 	reader *bufio.Reader
 	writer *bufio.Writer
 	mutex  sync.Mutex
+	logger logging.Logger
 }
 
 // NewStdioTransport creates a new Transport that uses standard I/O.
-func NewStdioTransport(reader io.Reader, writer io.Writer) *StdioTransport {
+func NewStdioTransport(reader io.Reader, writer io.Writer, logger logging.Logger) *StdioTransport {
+	if logger == nil {
+		logger = &logging.NoopLogger{}
+	}
 	return &StdioTransport{
 		reader: bufio.NewReader(reader),
 		writer: bufio.NewWriter(writer),
+		logger: logger,
 	}
 }
 
@@ -44,6 +50,15 @@ func (t *StdioTransport) Send(ctx context.Context, msg *protocol.Message) error 
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
+
+	// Log the message being sent
+	var idStr string
+	if msg.ID != nil {
+		idStr = fmt.Sprintf("%v", *msg.ID)
+	} else {
+		idStr = "<notification>"
+	}
+	t.logger.Debug("SENDING message ID=%s, Method=%s, Content: %s", idStr, msg.Method, string(data))
 
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
@@ -83,11 +98,23 @@ func (t *StdioTransport) Receive(ctx context.Context) (*protocol.Message, error)
 			return
 		}
 
+		// Log the raw message received
+		t.logger.Debug("RECEIVED raw message: %s", line)
+
 		var msg protocol.Message
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
 			errCh <- fmt.Errorf("failed to unmarshal message: %w", err)
 			return
 		}
+
+		// Log the parsed message
+		var idStr string
+		if msg.ID != nil {
+			idStr = fmt.Sprintf("%v", *msg.ID)
+		} else {
+			idStr = "<notification>"
+		}
+		t.logger.Debug("RECEIVED parsed message ID=%s, Method=%s", idStr, msg.Method)
 
 		msgCh <- &msg
 	}()

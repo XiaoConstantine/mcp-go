@@ -56,7 +56,7 @@ func NewServer(mcpServer core.MCPServer, config *ServerConfig) *Server {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	stdioTransport := transport.NewStdioTransport(os.Stdin, os.Stdout)
+	stdioTransport := transport.NewStdioTransport(os.Stdin, os.Stdout, config.Logger)
 	return &Server{
 		mcpServer:      mcpServer,
 		transport:      stdioTransport,
@@ -312,12 +312,12 @@ func (s *Server) Stop() error {
 	// Create a timeout for shutdown - increase timeout for tests
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
-	
+
 	// First, signal all operations to stop before trying to shutdown components - with nil check
 	if s.cancel != nil {
 		s.cancel()
 	}
-	
+
 	// Now initiate MCP server component shutdown - with nil check
 	if s.mcpServer != nil {
 		if err := s.mcpServer.Shutdown(shutdownCtx); err != nil {
@@ -327,7 +327,7 @@ func (s *Server) Stop() error {
 
 	// Give a brief moment for any pending messages to be rejected
 	time.Sleep(200 * time.Millisecond)
-	
+
 	// Wait for in-flight operations with timeout
 	doneCh := make(chan struct{})
 	go func() {

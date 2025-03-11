@@ -36,6 +36,9 @@ type Client struct {
 	shutdownMu sync.RWMutex
 
 	msgHandlerWg sync.WaitGroup
+
+	// Map to track requests that are currently being set up
+	pendingSetup sync.Map
 }
 
 // Option is a function that configures a Client.
@@ -61,10 +64,11 @@ func WithClientInfo(name, version string) Option {
 // NewClient creates a new MCP client.
 func NewClient(t transport.Transport, options ...Option) *Client {
 	c := &Client{
-		transport:  t,
-		logger:     logging.NewNoopLogger(),
-		notifChan:  make(chan *protocol.Message, 100),
-		clientInfo: models.Implementation{Name: "mcp-go-client", Version: "0.1.0"},
+		transport:       t,
+		logger:          logging.NewNoopLogger(),
+		notifChan:       make(chan *protocol.Message, 100),
+		clientInfo:      models.Implementation{Name: "mcp-go-client", Version: "2024-11-05"},
+		protocolVersion: "2024-11-05",
 	}
 
 	// Apply options
@@ -121,9 +125,30 @@ func (c *Client) handleMessages() {
 			default:
 				c.logger.Warn("Notification channel full, dropping notification", "method", msg.Method)
 			}
-		} else {
+		} else if msg.ID != nil {
 			// This is a response to a request
-			c.requestTracker.HandleResponse(msg)
+			id := *msg.ID
+
+			// First check if this response is for a request that's currently being set up
+			if _, isPending := c.pendingSetup.Load(id); isPending {
+				c.logger.Debug("Received response for request that's being set up, waiting briefly: %v", id)
+
+				// Try with short retries to see if the request gets tracked
+				for retries := 0; retries < 5; retries++ {
+					// Check if request is now tracked
+					if c.requestTracker.IsTracked(id) {
+						c.logger.Debug("Request now tracked, processing response: %v", id)
+						c.requestTracker.HandleResponse(msg)
+						break
+					}
+
+					// Wait briefly before retrying
+					time.Sleep(10 * time.Millisecond)
+				}
+			} else {
+				// Normal processing
+				c.requestTracker.HandleResponse(msg)
+			}
 		}
 	}
 }
@@ -165,8 +190,16 @@ func (c *Client) sendRequest(ctx context.Context, method string, params interfac
 	// Generate request ID
 	id := c.requestTracker.NextID()
 
+	// Mark this request as being set up to handle early responses
+	c.pendingSetup.Store(id, true)
+	c.logger.Debug("Setting up request ID: %v for method: %s", id, method)
+
 	// Create request context
 	reqCtx := c.requestTracker.TrackRequest(id, method)
+
+	// Small delay to ensure tracking is fully set up
+	time.Sleep(5 * time.Millisecond)
+	c.logger.Debug("Request tracking setup complete for ID: %v, ready to send", id)
 
 	// Create request message
 	request := &protocol.Message{
@@ -180,6 +213,7 @@ func (c *Client) sendRequest(ctx context.Context, method string, params interfac
 		paramsBytes, err := json.Marshal(params)
 		if err != nil {
 			c.requestTracker.UntrackRequest(id)
+			c.pendingSetup.Delete(id) // Clean up pending setup
 			return nil, fmt.Errorf("failed to marshal parameters: %w", err)
 		}
 		request.Params = paramsBytes
@@ -188,11 +222,17 @@ func (c *Client) sendRequest(ctx context.Context, method string, params interfac
 	// Send the request
 	if err := c.transport.Send(ctx, request); err != nil {
 		c.requestTracker.UntrackRequest(id)
+		c.pendingSetup.Delete(id) // Clean up pending setup
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	// Wait for response
-	return c.requestTracker.WaitForResponse(ctx, reqCtx)
+	resp, err := c.requestTracker.WaitForResponse(ctx, reqCtx)
+
+	// Clean up pending setup tracking
+	c.pendingSetup.Delete(id)
+
+	return resp, err
 }
 
 // sendNotification sends a notification.

@@ -94,6 +94,7 @@ func (t *RequestTracker) NextID() protocol.RequestID {
 
 // TrackRequest creates a new request context for tracking a request.
 func (t *RequestTracker) TrackRequest(id protocol.RequestID, method string) *RequestContext {
+	t.logger.Debug("Tracking new request with ID: %v, Method: %s", id, method)
 	ctx := &RequestContext{
 		ID:       id,
 		Method:   method,
@@ -102,40 +103,96 @@ func (t *RequestTracker) TrackRequest(id protocol.RequestID, method string) *Req
 	}
 
 	t.pendingRequests.Store(id, ctx)
+
+	// Debug-dump all currently tracked request IDs after adding
+	var trackedIDs []protocol.RequestID
+	t.pendingRequests.Range(func(key, value interface{}) bool {
+		id := key.(protocol.RequestID)
+		trackedIDs = append(trackedIDs, id)
+		return true
+	})
+	t.logger.Debug("Currently tracked request IDs: %v", trackedIDs)
+
 	return ctx
 }
 
 // UntrackRequest removes a request from tracking.
-func (t *RequestTracker) UntrackRequest(id protocol.RequestID) {
-	t.pendingRequests.Delete(id)
+func (t *RequestTracker) UntrackRequest(id interface{}) {
+	// Handle float64 to int64 conversion if needed
+	var lookupID interface{} = id
+	switch v := id.(type) {
+	case float64:
+		// Convert float64 to int64 for lookup if it's a whole number
+		if v == float64(int64(v)) {
+			lookupID = int64(v)
+		}
+	}
+	t.pendingRequests.Delete(lookupID)
+}
+
+// IsTracked checks if a request ID is being tracked.
+func (t *RequestTracker) IsTracked(id interface{}) bool {
+	// Handle float64 to int64 conversion if needed
+	var lookupID interface{} = id
+	switch v := id.(type) {
+	case float64:
+		// Convert float64 to int64 for lookup if it's a whole number
+		if v == float64(int64(v)) {
+			lookupID = int64(v)
+		}
+	}
+	_, ok := t.pendingRequests.Load(lookupID)
+	return ok
 }
 
 // HandleResponse processes a response message and routes it to the appropriate request context.
 func (t *RequestTracker) HandleResponse(msg *protocol.Message) bool {
 	if msg.ID == nil {
 		// This is a notification, not a response
+		t.logger.Debug("Received notification message with method: %s", msg.Method)
 		return false
 	}
 
-	reqCtxVal, ok := t.pendingRequests.Load(*msg.ID)
+	// Log detailed information about the received response
+	id := *msg.ID
+	t.logger.Debug("Processing response message with ID: %v (type: %T), Method: %s", id, id, msg.Method)
+
+	// Handle type conversion for ID lookup
+	var lookupID interface{} = id
+	switch v := id.(type) {
+	case float64:
+		// Convert float64 to int64 for lookup if it's a whole number
+		if v == float64(int64(v)) {
+			lookupID = int64(v)
+			t.logger.Debug("Converting request ID from float64 to int64: %v -> %v", id, lookupID)
+		}
+	}
+
+	reqCtxVal, ok := t.pendingRequests.Load(lookupID)
+	// If we still couldn't find it after all retries
 	if !ok {
-		t.logger.Warn("Received response for unknown request", "id", *msg.ID)
+		// Enhanced error logging with more context
+		t.logger.Warn("Received response for unknown request id=%v(%T) after %d retries (full message: %+v)", lookupID, lookupID, 5, msg)
 		return false
 	}
 
 	reqCtx := reqCtxVal.(*RequestContext)
+	t.logger.Debug("Found matching request context for ID %v (method: %s)", lookupID, reqCtx.Method)
 
 	if msg.Error != nil {
+		t.logger.Debug("Response contains error: %v", msg.Error)
 		reqCtx.Error <- &mcperrors.ProtocolError{
 			Code:    msg.Error.Code,
 			Message: msg.Error.Message,
 			Data:    msg.Error.Data,
 		}
 	} else {
+		t.logger.Debug("Sending successful response to request channel")
 		reqCtx.Response <- msg
 	}
 
-	t.UntrackRequest(*msg.ID)
+	t.logger.Debug("Untracking request ID: %v", lookupID)
+	t.UntrackRequest(lookupID)
 	return true
 }
 
