@@ -184,11 +184,13 @@ func (c *Client) setInitialized(initialized bool) {
 // sendRequest sends a request and waits for a response.
 func (c *Client) sendRequest(ctx context.Context, method string, params interface{}) (*protocol.Message, error) {
 	if c.isShutdown() {
+		c.logger.Debug("Client is shutdown, cannot send request")
 		return nil, errors.ErrConnClosed
 	}
 
 	// Generate request ID
 	id := c.requestTracker.NextID()
+	c.logger.Debug("Generated new request ID: %v for method: %s", id, method)
 
 	// Mark this request as being set up to handle early responses
 	c.pendingSetup.Store(id, true)
@@ -196,9 +198,10 @@ func (c *Client) sendRequest(ctx context.Context, method string, params interfac
 
 	// Create request context
 	reqCtx := c.requestTracker.TrackRequest(id, method)
+	c.logger.Debug("Request tracker created context for ID: %v", id)
 
 	// Small delay to ensure tracking is fully set up
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond) // Increase sleep time to ensure setup completes
 	c.logger.Debug("Request tracking setup complete for ID: %v, ready to send", id)
 
 	// Create request message
@@ -237,7 +240,9 @@ func (c *Client) sendRequest(ctx context.Context, method string, params interfac
 
 // sendNotification sends a notification.
 func (c *Client) sendNotification(ctx context.Context, method string, params interface{}) error {
+	c.logger.Debug("Preparing to send notification: %s", method)
 	if c.isShutdown() {
+		c.logger.Debug("Client is shutdown, cannot send notification")
 		return errors.ErrConnClosed
 	}
 
@@ -251,18 +256,28 @@ func (c *Client) sendNotification(ctx context.Context, method string, params int
 	if params != nil {
 		paramsBytes, err := json.Marshal(params)
 		if err != nil {
+			c.logger.Error("Failed to marshal notification parameters: %v", err)
 			return fmt.Errorf("failed to marshal parameters: %w", err)
 		}
 		notification.Params = paramsBytes
 	}
 
+	c.logger.Debug("Sending notification: %s", method)
 	// Send the notification
-	return c.transport.Send(ctx, notification)
+	err := c.transport.Send(ctx, notification)
+	if err != nil {
+		c.logger.Error("Failed to send notification: %v", err)
+	} else {
+		c.logger.Debug("Successfully sent notification: %s", method)
+	}
+	return err
 }
 
 // Initialize initializes the client.
 func (c *Client) Initialize(ctx context.Context) (*models.InitializeResult, error) {
+	c.logger.Debug("Initialize called")
 	if c.isInitialized() {
+		c.logger.Debug("Client already initialized")
 		return nil, fmt.Errorf("client already initialized")
 	}
 
@@ -279,36 +294,50 @@ func (c *Client) Initialize(ctx context.Context) (*models.InitializeResult, erro
 		ProtocolVersion: "0.1.0",
 	}
 
+	c.logger.Debug("Sending initialize request")
 	// Send initialize request
 	response, err := c.sendRequest(ctx, "initialize", params)
 	if err != nil {
+		c.logger.Error("Failed to initialize: %v", err)
 		return nil, fmt.Errorf("failed to initialize: %w", err)
 	}
+	c.logger.Debug("Received initialize response")
 
 	resultBytes, err := json.Marshal(response.Result)
 	if err != nil {
+		c.logger.Error("Failed to marshal result: %v", err)
 		return nil, fmt.Errorf("failed to marshal result: %w", err)
 	}
+	c.logger.Debug("Marshalled result: %s", string(resultBytes))
+
 	// Parse response
 	var result models.InitializeResult
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		c.logger.Error("Failed to unmarshal initialize result: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal initialize result: %w", err)
 	}
+	c.logger.Debug("Unmarshalled initialize result successfully")
 
 	// Store server information
 	c.capabilities = &result.Capabilities
 	c.serverInfo = &result.ServerInfo
 	c.instructions = result.Instructions
 	c.protocolVersion = result.ProtocolVersion
+	c.logger.Debug("Stored server information")
 
 	// Mark as initialized
 	c.setInitialized(true)
+	c.logger.Debug("Client marked as initialized")
 
 	// Send initialized notification
+	c.logger.Debug("Preparing to send initialized notification")
 	if err := c.sendNotification(ctx, "notifications/initialized", struct{}{}); err != nil {
 		c.logger.Warn("Failed to send initialized notification", "error", err)
+	} else {
+		c.logger.Debug("Successfully sent initialized notification")
 	}
 
+	c.logger.Debug("Initialize completed successfully")
 	return &result, nil
 }
 
