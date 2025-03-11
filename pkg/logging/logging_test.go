@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// testWriter is a simple io.Writer that captures log output
+// testWriter is a simple io.Writer that captures log output.
 type testWriter struct {
 	buf bytes.Buffer
 }

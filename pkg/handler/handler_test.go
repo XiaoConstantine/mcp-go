@@ -12,7 +12,7 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 )
 
-// MockHandler is a mock message handler for testing
+// MockHandler is a mock message handler for testing.
 type MockHandler struct {
 	HandleMessageFunc func(ctx context.Context, msg *protocol.Message) (*protocol.Message, error)
 }
