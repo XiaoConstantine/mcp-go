@@ -1035,6 +1035,7 @@ func TestChannelFullNotification(t *testing.T) {
 		logManager:       logging.NewManager(),
 		notificationChan: make(chan protocol.Message, 2), // Only 2 capacity
 	}
+	server.logger = server.GetLogger("server")
 
 	// Fill the channel
 	server.notificationChan <- protocol.Message{Method: "test1"}

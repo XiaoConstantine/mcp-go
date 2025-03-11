@@ -8,9 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/model"
+	models "github.com/XiaoConstantine/mcp-go/pkg/model"
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
-	"github.com/XiaoConstantine/mcp-go/pkg/server/logging"
+
+	"github.com/XiaoConstantine/mcp-go/pkg/logging"
+	serverLog "github.com/XiaoConstantine/mcp-go/pkg/server/logging"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/prompt"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/resource"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/tools"
@@ -47,7 +49,8 @@ type Server struct {
 
 	toolsManager  *tools.ToolsManager
 	promptManager *prompt.Manager
-	logManager    *logging.Manager
+	logManager    *serverLog.Manager
+	logger        logging.Logger
 }
 
 // NewServerWithOptions creates a new server with the specified options.
@@ -65,7 +68,7 @@ func NewServerWithOptions(options ServerOptions) *Server {
 		toolsManager:     tools.NewToolsManager(),
 		promptManager:    prompt.NewManager(),
 		shutdownCh:       make(chan struct{}),
-		logManager:       logging.NewManager(),
+		logManager:       serverLog.NewManager(),
 		notificationChan: make(chan protocol.Message, 100),
 		capabilities: protocol.ServerCapabilities{
 			Resources: &protocol.ResourcesCapability{
@@ -87,6 +90,9 @@ func NewServerWithOptions(options ServerOptions) *Server {
 		notification := models.NewLoggingMessageNotification(level, data, logger)
 		server.sendNotification(notification)
 	})
+
+	// Setup logger
+	server.logger = server.GetLogger("server")
 
 	return server
 }
@@ -129,7 +135,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		// Signal shutdown
 		close(s.shutdownCh)
 
-		s.logManager.Log(models.LogLevelInfo, "MCP Server is shutting down", "server")
+		s.logger.Info("MCP Server is shutting down")
 		// Create a wait group to track component shutdown
 		var wg sync.WaitGroup
 
@@ -138,9 +144,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			if resErr := s.resourceManager.Shutdown(shutdownCtx); resErr != nil {
-				s.logManager.Log(models.LogLevelError,
-					fmt.Sprintf("Error during resource manager shutdown: %v", resErr),
-					"server")
+				s.logger.Error("Error during resource manager shutdown: %v", resErr)
 				err = resErr // Capture the first error
 			}
 		}()
@@ -162,9 +166,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		// Wait for shutdown to complete or timeout
 		select {
 		case <-shutdownComplete:
-			s.logManager.Log(models.LogLevelInfo, "MCP Server shutdown complete", "server")
+			s.logger.Info("MCP Server shutdown complete")
 		case <-shutdownCtx.Done():
-			s.logManager.Log(models.LogLevelError, "MCP Server shutdown timed out", "server")
+			s.logger.Info("MCP Server shutdown timed out")
 			err = shutdownCtx.Err()
 		}
 		// Final step: drain the notification channel to prevent deadlocks
@@ -281,24 +285,23 @@ func (s *Server) handleInitialize(ctx context.Context, msg *protocol.Message) (*
 			ClientInfo      models.Implementation       `json:"clientInfo"`
 			ProtocolVersion string                      `json:"protocolVersion"`
 		}
-
-		s.logManager.Log(models.LogLevelDebug, "Unmarshaling initialization params...\n", "server")
+		s.logger.Debug("Unmarshaling initialization params...\n")
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			initErr = fmt.Errorf("invalid initialize params: %w", err)
 
-			s.logManager.Log(models.LogLevelDebug, initErr, "server")
+			s.logger.Debug("invalid initialize params: %w", err)
 			return
 		}
 
-		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Protocol version: %s\n", params.ProtocolVersion), "server")
-		s.logManager.Log(models.LogLevelDebug, fmt.Sprintf("Client info: %s v%s\n", params.ClientInfo.Name, params.ClientInfo.Version), "server")
+		s.logger.Debug("Protocol version: %s\n", params.ProtocolVersion)
+		s.logger.Debug("Client info: %s v%s\n", params.ClientInfo.Name, params.ClientInfo.Version)
 		s.mu.Lock()
 		s.initialized = true
 		s.mu.Unlock()
 
 		initialized = true
 
-		s.logManager.Log(models.LogLevelDebug, "Initialization completed successfully\n", "server")
+		s.logger.Debug("Initialization completed successfully\n")
 	})
 
 	if initErr != nil {
@@ -570,16 +573,11 @@ func (s *Server) AddRoot(root models.Root) error {
 			// Continue with resource scan
 			if err := s.resourceManager.AddRoot(root); err != nil {
 				// Error logging...
-				s.logManager.Log(models.LogLevelError,
-					fmt.Sprintf("Error adding root %s: %v", root.URI, err),
-					"resource")
+				s.logger.Error("Error adding root %s: %v", root.URI, err)
 
 			} else {
 				// Success logging...
-				s.logManager.Log(models.LogLevelInfo,
-					fmt.Sprintf("Successfully added root %s", root.URI),
-					"resource")
-
+				s.logger.Debug("Successfully added root %s", root.URI)
 			}
 		}
 
@@ -740,17 +738,13 @@ func (s *Server) sendNotification(notification models.Notification) {
 		params = struct{}{}
 	default:
 		// Handle unknown notification types
-		s.logManager.Log(models.LogLevelWarning,
-			fmt.Sprintf("Unknown notification type: %T", notification),
-			"server")
+		s.logger.Warn("Unknown notification type: %T", notification)
 		return
 	}
 
 	paramsBytes, err := json.Marshal(params)
 	if err != nil {
-		s.logManager.Log(models.LogLevelError,
-			fmt.Sprintf("Failed to marshal notification params: %v", err),
-			"server")
+		s.logger.Error("Failed to marshal notification params: %v", err)
 		return
 	}
 
@@ -765,11 +759,13 @@ func (s *Server) sendNotification(notification models.Notification) {
 		// Successfully sent notification
 	case <-s.shutdownCh:
 		// Server is shutting down, don't queue more notifications
-		s.logManager.Log(models.LogLevelDebug, "Dropping notification during shutdown", "server")
+		s.logger.Debug("Dropping notification during shutdown")
 	default:
 		// Channel is full, log warning and skip notification
-		s.logManager.Log(models.LogLevelWarning,
-			"Notification channel full, dropping notification",
-			"server")
+		s.logger.Warn("Notification channel full, dropping notification")
 	}
+}
+
+func (s *Server) GetLogger(component string) logging.Logger {
+	return serverLog.NewManagerAdapter(s.logManager, component)
 }
