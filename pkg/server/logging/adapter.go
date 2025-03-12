@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/XiaoConstantine/mcp-go/pkg/logging"
-	"github.com/XiaoConstantine/mcp-go/pkg/model"
+	models "github.com/XiaoConstantine/mcp-go/pkg/model"
 )
 
 // ManagerAdapter adapts a Manager to implement the logging.Logger interface.

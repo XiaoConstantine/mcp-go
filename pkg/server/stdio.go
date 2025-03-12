@@ -310,7 +310,7 @@ func (s *Server) Stop() error {
 	s.shutdownMu.Unlock()
 
 	// Create a timeout for shutdown - increase timeout for tests
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer shutdownCancel()
 
 	// First, signal all operations to stop before trying to shutdown components - with nil check

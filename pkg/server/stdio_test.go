@@ -665,13 +665,13 @@ func TestServerShutdownDuringOperation(t *testing.T) {
 	}()
 
 	// Give the server time to initialize
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Queue some input to keep the server busy
 	mockTransport.QueueRead(`{"jsonrpc":"2.0","id":1,"method":"ping"}` + "\n")
 
 	// Give time for the server to process the ping
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// Call Stop and wait for it to complete
 	stopErr := server.Stop()
@@ -684,7 +684,7 @@ func TestServerShutdownDuringOperation(t *testing.T) {
 	select {
 	case <-serverDone:
 		assert.NoError(t, startErr)
-	case <-time.After(5 * time.Second):
+	case <-time.After(2 * time.Second):
 		t.Fatal("Test timed out waiting for server to exit after Stop()")
 	}
 
