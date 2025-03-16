@@ -216,7 +216,10 @@ func (t *SSETransport) HandleClientMessage(w http.ResponseWriter, r *http.Reques
 			case resp := <-respCh:
 				// Send the response
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(resp)
+				if err := json.NewEncoder(w).Encode(resp); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+					return
+				}
 
 				// Clean up
 				t.responseMu.Lock()
