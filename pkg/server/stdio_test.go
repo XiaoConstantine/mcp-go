@@ -16,39 +16,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockMCPServer is a mock implementation of the MCPServer interface.
-type MockMCPServer struct {
-	mock.Mock
-	notifChan chan protocol.Message
-}
-
-func NewMockMCPServer() *MockMCPServer {
-	return &MockMCPServer{
-		notifChan: make(chan protocol.Message, 10),
-	}
-}
-
-func (m *MockMCPServer) HandleMessage(ctx context.Context, msg *protocol.Message) (*protocol.Message, error) {
-	args := m.Called(ctx, msg)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*protocol.Message), args.Error(1)
-}
-
-func (m *MockMCPServer) Notifications() <-chan protocol.Message {
-	return m.notifChan
-}
-
-func (m *MockMCPServer) Shutdown(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
-}
-
-func (m *MockMCPServer) SendNotification(notif protocol.Message) {
-	m.notifChan <- notif
-}
-
 type MockTransport struct {
 	readQueue   []string
 	readErr     error
