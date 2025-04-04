@@ -2,6 +2,7 @@ package transport
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -26,10 +27,12 @@ type Transport interface {
 
 // StdioTransport implements Transport using standard I/O.
 type StdioTransport struct {
-	reader *bufio.Reader
-	writer *bufio.Writer
-	mutex  sync.Mutex
-	logger logging.Logger
+	reader       io.Reader    // The raw reader
+	writer       *bufio.Writer
+	mutex        sync.Mutex
+	logger       logging.Logger
+	bufferSize   int          // Initial buffer size for reading
+	maxLineSize  int          // Maximum line size before giving up
 }
 
 // NewStdioTransport creates a new Transport that uses standard I/O.
@@ -37,10 +40,17 @@ func NewStdioTransport(reader io.Reader, writer io.Writer, logger logging.Logger
 	if logger == nil {
 		logger = &logging.NoopLogger{}
 	}
+	
+	// Use larger default buffer sizes to handle bigger messages
+	const defaultBufferSize = 64 * 1024     // 64KB initial buffer
+	const defaultMaxLineSize = 100 * 1024 * 1024 // 100MB max message size
+	
 	return &StdioTransport{
-		reader: bufio.NewReader(reader),
-		writer: bufio.NewWriter(writer),
-		logger: logger,
+		reader:      reader,
+		writer:      bufio.NewWriter(writer),
+		logger:      logger,
+		bufferSize:  defaultBufferSize,
+		maxLineSize: defaultMaxLineSize,
 	}
 }
 
@@ -91,15 +101,64 @@ func (t *StdioTransport) Receive(ctx context.Context) (*protocol.Message, error)
 
 	// Start a goroutine to read from stdin
 	go func() {
-		// Use ReadString to read a full line up to the newline
-		line, err := t.reader.ReadString('\n')
-		if err != nil {
-			errCh <- fmt.Errorf("failed to read message: %w", err)
-			return
+		// Use a dynamic buffer approach instead of ReadString
+		var buf bytes.Buffer
+		reader := bufio.NewReaderSize(t.reader, t.bufferSize)
+		
+		// Flag to track if we've encountered a newline
+		foundNewline := false
+		totalBytesRead := 0
+		
+		for !foundNewline {
+			// Read a chunk from the reader
+			chunk, err := reader.ReadBytes('\n')
+			
+			if err != nil && err != io.EOF {
+				errCh <- fmt.Errorf("failed to read message: %w", err)
+				return
+			}
+			
+			// Check if we've exceeded the maximum message size
+			totalBytesRead += len(chunk)
+			if totalBytesRead > t.maxLineSize {
+				errCh <- fmt.Errorf("message too large: exceeded %d bytes", t.maxLineSize)
+				return
+			}
+			
+			// If we found a newline or reached EOF
+			if len(chunk) > 0 {
+				buf.Write(chunk)
+				if chunk[len(chunk)-1] == '\n' {
+					foundNewline = true
+				}
+			}
+			
+			// If we reached EOF, break if we have some data, otherwise report error
+			if err == io.EOF {
+				if buf.Len() > 0 {
+					foundNewline = true // Treat EOF as end of message
+				} else {
+					errCh <- io.EOF
+					return
+				}
+			}
 		}
-
-		// Log the raw message received
-		t.logger.Debug("RECEIVED raw message: %s", line)
+		
+		// Get the complete message as a string
+		line := buf.String()
+		
+		// Trim the trailing newline if any
+		if len(line) > 0 && line[len(line)-1] == '\n' {
+			line = line[:len(line)-1]
+		}
+		
+		// Log the raw message received (truncate if very large)
+		const maxLogSize = 4096 // Only log first 4KB of large messages
+		logLine := line
+		if len(logLine) > maxLogSize {
+			logLine = logLine[:maxLogSize] + "... [truncated]"
+		}
+		t.logger.Debug("RECEIVED raw message: %s", logLine)
 
 		var msg protocol.Message
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
@@ -118,6 +177,7 @@ func (t *StdioTransport) Receive(ctx context.Context) (*protocol.Message, error)
 
 		msgCh <- &msg
 	}()
+	
 	// Wait for either the message to be read or the context to be cancelled
 	select {
 	case <-ctx.Done():

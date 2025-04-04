@@ -216,6 +216,139 @@ func TestStdioTransportReceive(t *testing.T) {
 	}
 }
 
+// TestLargeMessageHandling tests that the transport can handle large messages.
+func TestLargeMessageHandling(t *testing.T) {
+	// Create a large JSON message (8KB+)
+	largeString := strings.Repeat("abcdefghij", 800) // 8,000 characters
+	largeParams := map[string]interface{}{
+		"largeField1": largeString,
+		"largeField2": largeString,
+		"largeField3": map[string]string{
+			"nested1": largeString[:1000],
+			"nested2": largeString[:1000],
+		},
+	}
+	
+	paramsJSON, err := json.Marshal(largeParams)
+	if err != nil {
+		t.Fatalf("Failed to marshal large params: %v", err)
+	}
+	
+	reqID := protocol.RequestID(999)
+	largeMsg := &protocol.Message{
+		JSONRPC: "2.0",
+		ID:      &reqID,
+		Method:  "testLargeMessage",
+		Params:  paramsJSON,
+	}
+	
+	// Convert to JSON
+	msgJSON, err := json.Marshal(largeMsg)
+	if err != nil {
+		t.Fatalf("Failed to marshal large message: %v", err)
+	}
+	
+	// Add newline
+	msgJSON = append(msgJSON, '\n')
+	
+	// Setup reader and transport
+	reader := &mockReader{data: string(msgJSON)}
+	transport := NewStdioTransport(reader, &strings.Builder{}, logging.NewNoopLogger())
+	
+	// Try to receive the message
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	
+	receivedMsg, err := transport.Receive(ctx)
+	if err != nil {
+		t.Fatalf("Failed to receive large message: %v", err)
+	}
+	
+	// Verify the received message
+	if receivedMsg.Method != "testLargeMessage" {
+		t.Errorf("Expected method testLargeMessage, got %s", receivedMsg.Method)
+	}
+	
+	if fmt.Sprintf("%v", *receivedMsg.ID) != "999" {
+		t.Errorf("Expected ID 999, got %v", *receivedMsg.ID)
+	}
+}
+
+// TestMultipleMessageChunks tests that the transport can handle messages that come in multiple chunks.
+func TestMultipleMessageChunks(t *testing.T) {
+	// Create a message that will be read in multiple chunks
+	reqID := protocol.RequestID(123)
+	message := &protocol.Message{
+		JSONRPC: "2.0",
+		ID:      &reqID,
+		Method:  "testMethod",
+		Params:  json.RawMessage(`{"key":"value"}`),
+	}
+	
+	// Convert to JSON
+	msgJSON, err := json.Marshal(message)
+	if err != nil {
+		t.Fatalf("Failed to marshal message: %v", err)
+	}
+	
+	// Add newline
+	msgJSON = append(msgJSON, '\n')
+	
+	// Create a custom reader that delivers the message one byte at a time
+	reader := &slowChunkReader{data: string(msgJSON), chunkSize: 1}
+	transport := NewStdioTransport(reader, &strings.Builder{}, logging.NewNoopLogger())
+	
+	// Try to receive the message
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	
+	receivedMsg, err := transport.Receive(ctx)
+	if err != nil {
+		t.Fatalf("Failed to receive chunked message: %v", err)
+	}
+	
+	// Verify the received message
+	if receivedMsg.Method != "testMethod" {
+		t.Errorf("Expected method testMethod, got %s", receivedMsg.Method)
+	}
+	
+	if fmt.Sprintf("%v", *receivedMsg.ID) != "123" {
+		t.Errorf("Expected ID 123, got %v", *receivedMsg.ID)
+	}
+}
+
+// slowChunkReader is a reader that delivers data in small chunks.
+type slowChunkReader struct {
+	data      string
+	index     int
+	chunkSize int
+}
+
+func (r *slowChunkReader) Read(p []byte) (n int, err error) {
+	if r.index >= len(r.data) {
+		return 0, io.EOF
+	}
+	
+	// Determine how much data to return
+	remaining := len(r.data) - r.index
+	toRead := r.chunkSize
+	if toRead > remaining {
+		toRead = remaining
+	}
+	if toRead > len(p) {
+		toRead = len(p)
+	}
+	
+	// Copy the data
+	copy(p, r.data[r.index:r.index+toRead])
+	r.index += toRead
+	
+	// Add a small delay to simulate slow network
+	time.Sleep(1 * time.Millisecond)
+	
+	return toRead, nil
+}
+
 // TestStdioTransportClose tests the Close method.
 func TestStdioTransportClose(t *testing.T) {
 	transport := NewStdioTransport(strings.NewReader(""), &strings.Builder{}, logging.NewNoopLogger())
