@@ -575,7 +575,7 @@ func TestStartServer(t *testing.T) {
 	mockTransport.QueueRead(`{"jsonrpc":"2.0","id":1,"method":"ping"}` + "\n")
 
 	// Create server with mock transport
-	config := &ServerConfig{DefaultTimeout: 1 * time.Second}
+	config := &ServerConfig{DefaultTimeout: 1 * time.Second, Logger: logging.NewNoopLogger()}
 	server := NewServer(mockMCP, config)
 
 	// Replace the default transport with our mock

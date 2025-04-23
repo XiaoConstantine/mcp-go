@@ -27,12 +27,12 @@ type Transport interface {
 
 // StdioTransport implements Transport using standard I/O.
 type StdioTransport struct {
-	reader       io.Reader    // The raw reader
-	writer       *bufio.Writer
-	mutex        sync.Mutex
-	logger       logging.Logger
-	bufferSize   int          // Initial buffer size for reading
-	maxLineSize  int          // Maximum line size before giving up
+	reader      *bufio.Reader
+	writer      *bufio.Writer
+	mutex       sync.Mutex
+	logger      logging.Logger
+	bufferSize  int // Initial buffer size for reading
+	maxLineSize int // Maximum line size before giving up
 }
 
 // NewStdioTransport creates a new Transport that uses standard I/O.
@@ -40,13 +40,13 @@ func NewStdioTransport(reader io.Reader, writer io.Writer, logger logging.Logger
 	if logger == nil {
 		logger = &logging.NoopLogger{}
 	}
-	
+
 	// Use larger default buffer sizes to handle bigger messages
-	const defaultBufferSize = 64 * 1024     // 64KB initial buffer
+	const defaultBufferSize = 64 * 1024          // 64KB initial buffer
 	const defaultMaxLineSize = 100 * 1024 * 1024 // 100MB max message size
-	
+
 	return &StdioTransport{
-		reader:      reader,
+		reader:      bufio.NewReaderSize(reader, defaultBufferSize),
 		writer:      bufio.NewWriter(writer),
 		logger:      logger,
 		bufferSize:  defaultBufferSize,
@@ -95,101 +95,80 @@ func (t *StdioTransport) Send(ctx context.Context, msg *protocol.Message) error 
 
 // Receive implements Transport.Receive for StdioTransport.
 func (t *StdioTransport) Receive(ctx context.Context) (*protocol.Message, error) {
-	// Create a channel for the read operation
-	msgCh := make(chan *protocol.Message, 1)
-	errCh := make(chan error, 1)
+	var buf bytes.Buffer
+	totalBytesRead := 0
+	foundNewline := false
 
-	// Start a goroutine to read from stdin
-	go func() {
-		// Use a dynamic buffer approach instead of ReadString
-		var buf bytes.Buffer
-		reader := bufio.NewReaderSize(t.reader, t.bufferSize)
-		
-		// Flag to track if we've encountered a newline
-		foundNewline := false
-		totalBytesRead := 0
-		
-		for !foundNewline {
-			// Read a chunk from the reader
-			chunk, err := reader.ReadBytes('\n')
-			
-			if err != nil && err != io.EOF {
-				errCh <- fmt.Errorf("failed to read message: %w", err)
-				return
+	for !foundNewline {
+		// Read a chunk from the persistent reader
+		chunk, err := t.reader.ReadBytes('\n')
+
+		if len(chunk) > 0 {
+			// Check size limit before appending
+			if totalBytesRead+len(chunk) > t.maxLineSize {
+				// Drain the rest of the oversized line to avoid leaving partial data
+				// in the buffer for the next read. This is best effort.
+				for err == nil && bytes.LastIndexByte(chunk, '\n') == -1 {
+					chunk, err = t.reader.ReadBytes('\n')
+				}
+				return nil, fmt.Errorf("message too large: exceeded %d bytes limit", t.maxLineSize)
 			}
-			
-			// Check if we've exceeded the maximum message size
+			buf.Write(chunk)
 			totalBytesRead += len(chunk)
-			if totalBytesRead > t.maxLineSize {
-				errCh <- fmt.Errorf("message too large: exceeded %d bytes", t.maxLineSize)
-				return
+			if bytes.HasSuffix(chunk, []byte("\n")) {
+				foundNewline = true
 			}
-			
-			// If we found a newline or reached EOF
-			if len(chunk) > 0 {
-				buf.Write(chunk)
-				if chunk[len(chunk)-1] == '\n' {
-					foundNewline = true
-				}
-			}
-			
-			// If we reached EOF, break if we have some data, otherwise report error
+		}
+
+		// Handle errors after potentially processing the chunk
+		if err != nil {
 			if err == io.EOF {
+				// If we got EOF but read some data without a newline, treat it as a complete message.
 				if buf.Len() > 0 {
-					foundNewline = true // Treat EOF as end of message
+					break // Exit loop, process buffer below
 				} else {
-					errCh <- io.EOF
-					return
+					return nil, io.EOF // Genuine EOF with no data
 				}
 			}
+			// Any other read error
+			return nil, fmt.Errorf("failed to read message chunk: %w", err)
 		}
-		
-		// Get the complete message as a string
-		line := buf.String()
-		
-		// Trim the trailing newline if any
-		if len(line) > 0 && line[len(line)-1] == '\n' {
-			line = line[:len(line)-1]
-		}
-		
-		// Log the raw message received (truncate if very large)
-		const maxLogSize = 4096 // Only log first 4KB of large messages
-		logLine := line
-		if len(logLine) > maxLogSize {
-			logLine = logLine[:maxLogSize] + "... [truncated]"
-		}
-		t.logger.Debug("RECEIVED raw message: %s", logLine)
-
-		var msg protocol.Message
-		if err := json.Unmarshal([]byte(line), &msg); err != nil {
-			errCh <- fmt.Errorf("failed to unmarshal message: %w", err)
-			return
-		}
-
-		// Log the parsed message
-		var idStr string
-		if msg.ID != nil {
-			idStr = fmt.Sprintf("%v", *msg.ID)
-		} else {
-			idStr = "<notification>"
-		}
-		t.logger.Debug("RECEIVED parsed message ID=%s, Method=%s", idStr, msg.Method)
-
-		msgCh <- &msg
-	}()
-	
-	// Wait for either the message to be read or the context to be cancelled
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case err := <-errCh:
-		return nil, err
-	case msg := <-msgCh:
-		return msg, nil
 	}
+
+	// Get the complete message bytes
+	lineBytes := buf.Bytes()
+
+	// Trim the trailing newline if any
+	if len(lineBytes) > 0 && lineBytes[len(lineBytes)-1] == '\n' {
+		lineBytes = lineBytes[:len(lineBytes)-1]
+	}
+
+	// Log the raw message received (truncate if very large)
+	const maxLogSize = 4096      // Only log first 4KB of large messages
+	logLine := string(lineBytes) // Convert only for logging if needed
+	if len(logLine) > maxLogSize {
+		logLine = logLine[:maxLogSize] + "... [truncated]"
+	}
+	t.logger.Debug("RECEIVED raw message", "content", logLine)
+
+	var msg protocol.Message
+	if err := json.Unmarshal(lineBytes, &msg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal message: %w", err)
+	}
+
+	// Log the parsed message
+	var idStr string
+	if msg.ID != nil {
+		idStr = fmt.Sprintf("%v", *msg.ID)
+	} else {
+		idStr = "<notification>"
+	}
+	t.logger.Debug("RECEIVED parsed message", "id", idStr, "method", msg.Method)
+
+	return &msg, nil
 }
 
-// Close implements Transport.Close for StdioTransport.
+// // Close implements Transport.Close for StdioTransport.
 func (t *StdioTransport) Close() error {
 	// For stdio, we don't actually close the reader/writer
 	return nil

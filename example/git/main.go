@@ -9,10 +9,12 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/XiaoConstantine/mcp-go/pkg/model"
+	"github.com/XiaoConstantine/mcp-go/pkg/logging"
+	models "github.com/XiaoConstantine/mcp-go/pkg/model"
 	"github.com/XiaoConstantine/mcp-go/pkg/server"
 	"github.com/XiaoConstantine/mcp-go/pkg/server/core"
 )
@@ -154,6 +156,12 @@ func (h *GitToolHandler) CallTool(name string, arguments map[string]interface{})
 	case "log":
 		args := []string{"log"}
 
+		if nStr, ok := arguments["n"].(string); ok { // Check for "n" as string
+			// Convert string to int
+			if nInt, err := strconv.Atoi(nStr); err == nil && nInt > 0 {
+				args = append(args, fmt.Sprintf("--max-count=%d", nInt)) // Use converted int
+			}
+		}
 		// Add optional arguments
 		if maxCount, ok := arguments["max_count"].(float64); ok {
 			args = append(args, fmt.Sprintf("--max-count=%d", int(maxCount)))
@@ -344,6 +352,7 @@ func main() {
 	// Configure the STDIO server
 	config := &server.ServerConfig{
 		DefaultTimeout: 60 * time.Second,
+		Logger:         logging.NewStdLogger(logging.DebugLevel),
 	}
 	stdioServer := server.NewServer(mcpServer, config)
 
