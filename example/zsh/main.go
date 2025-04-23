@@ -81,7 +81,7 @@ func (s *ZshPersistentShell) setCwd(dir string) error {
 	}
 
 	// Change directory in the shell
-	s.stdin.WriteString(fmt.Sprintf("cd %s\n", dir))
+	fmt.Fprintf(s.stdin, "cd %s\n", dir)
 	s.cwd = dir
 	return nil
 }

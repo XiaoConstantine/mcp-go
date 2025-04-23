@@ -119,7 +119,7 @@ func (t *RequestTracker) TrackRequest(id protocol.RequestID, method string) *Req
 // UntrackRequest removes a request from tracking.
 func (t *RequestTracker) UntrackRequest(id interface{}) {
 	// Handle float64 to int64 conversion if needed
-	var lookupID interface{} = id
+	var lookupID = id
 	switch v := id.(type) {
 	case float64:
 		// Convert float64 to int64 for lookup if it's a whole number
@@ -133,7 +133,7 @@ func (t *RequestTracker) UntrackRequest(id interface{}) {
 // IsTracked checks if a request ID is being tracked.
 func (t *RequestTracker) IsTracked(id interface{}) bool {
 	// Handle float64 to int64 conversion if needed
-	var lookupID interface{} = id
+	var lookupID = id
 	switch v := id.(type) {
 	case float64:
 		// Convert float64 to int64 for lookup if it's a whole number

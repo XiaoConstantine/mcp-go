@@ -83,7 +83,7 @@ func (m *Manager) GetPrompt(ctx context.Context, name string, args map[string]st
 			// Simple variable substitution
 			for key, value := range args {
 				// Replace {{key}} with value
-				text = strings.Replace(text, "{{"+key+"}}", value, -1)
+				text = strings.ReplaceAll(text, "{{"+key+"}}", value)
 			}
 
 			newContent := models.TextContent{

@@ -60,7 +60,8 @@ func (m *MockTransport) Send(ctx context.Context, msg *protocol.Message) error {
 		m.t.Logf("📤 SEND Request: ID=%v, Method=%s", *msg.ID, msg.Method)
 
 		// Auto-generate responses for known methods
-		if msg.Method == "initialize" {
+		switch msg.Method {
+		case "initialize":
 			// Create initialize response
 			initResult := models.InitializeResult{
 				ServerInfo: models.Implementation{
@@ -92,7 +93,7 @@ func (m *MockTransport) Send(ctx context.Context, msg *protocol.Message) error {
 				time.Sleep(10 * time.Millisecond)
 				m.t.Logf("🔄 Response ready for ID=%v", *msg.ID)
 			}()
-		} else if msg.Method == "ping" {
+		case "ping":
 			// Prepare ping response
 			response := &protocol.Message{
 				JSONRPC: "2.0",
