@@ -27,8 +27,9 @@ This library provides a complete implementation of the MCP specification in Go, 
 
 - Client implementation for connecting to MCP servers
 - Server framework for building context providers
-- Transport layer with support for standard I/O communication
+- Multiple transport layers (stdio, HTTP, Server-Sent Events)
 - Complete type definitions for the MCP protocol
+- Comprehensive documentation in `doc.go`
 - Utilities for logging and error handling
 
 ## Installation
@@ -146,12 +147,14 @@ The library is organized into several key packages:
 
 - `pkg/client`: Client implementation for connecting to MCP servers
 - `pkg/server`: Server implementation for creating MCP context providers
-- `pkg/transport`: Transport layer implementations (currently supporting stdio)
+- `pkg/transport`: Transport layer implementations (stdio, HTTP, SSE)
 - `pkg/model`: Type definitions for MCP protocol objects
 - `pkg/protocol`: Core protocol implementation (JSON-RPC, capabilities)
 - `pkg/errors`: Error definitions and handling
 - `pkg/logging`: Logging utilities
 - `pkg/handler`: Handler interfaces for server-side functionality
+
+For comprehensive API documentation, see `doc.go` which provides detailed usage examples, architecture overview, and feature descriptions.
 
 ## Contributing
 
