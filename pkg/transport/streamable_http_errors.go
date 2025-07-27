@@ -8,25 +8,8 @@ import (
 	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 )
 
-// Standard JSON-RPC error codes.
-const (
-	// JSON-RPC 2.0 standard error codes.
-	JSONRPCParseError     = -32700 // Parse error - Invalid JSON was received by the server
-	JSONRPCInvalidRequest = -32600 // Invalid Request - The JSON sent is not a valid Request object
-	JSONRPCMethodNotFound = -32601 // Method not found - The method does not exist / is not available
-	JSONRPCInvalidParams  = -32602 // Invalid params - Invalid method parameter(s)
-	JSONRPCInternalError  = -32603 // Internal error - Internal JSON-RPC error
-
-	// Server error codes (-32000 to -32099 are reserved for implementation-defined server-errors).
-	JSONRPCServerError       = -32000 // Generic server error
-	JSONRPCSessionRequired   = -32001 // Session ID required
-	JSONRPCInvalidSession    = -32002 // Invalid session ID
-	JSONRPCConnectionLimit   = -32003 // Connection limit exceeded
-	JSONRPCRequestTimeout    = -32004 // Request timeout
-	JSONRPCServerBusy        = -32005 // Server busy
-	JSONRPCUpgradeNotAllowed = -32006 // SSE upgrade not allowed
-	JSONRPCInvalidUpgrade    = -32007 // Invalid upgrade request
-)
+// Note: Error codes are now defined centrally in pkg/protocol/jsonrpc.go
+// This file provides error handling functions for the streamable HTTP transport.
 
 // MCPError represents a standardized MCP JSON-RPC error.
 type MCPError struct {
@@ -64,7 +47,7 @@ func NewMCPError(code int, message string, data interface{}) *MCPError {
 // Predefined error constructors for common errors.
 func NewParseError(data interface{}) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCParseError,
+		Code:    protocol.ErrCodeParseError,
 		Message: "Parse error",
 		Data:    data,
 	}
@@ -72,7 +55,7 @@ func NewParseError(data interface{}) *MCPError {
 
 func NewInvalidRequestError(data interface{}) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCInvalidRequest,
+		Code:    protocol.ErrCodeInvalidRequest,
 		Message: "Invalid Request",
 		Data:    data,
 	}
@@ -80,7 +63,7 @@ func NewInvalidRequestError(data interface{}) *MCPError {
 
 func NewMethodNotFoundError(method string) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCMethodNotFound,
+		Code:    protocol.ErrCodeMethodNotFound,
 		Message: "Method not found",
 		Data:    map[string]string{"method": method},
 	}
@@ -88,7 +71,7 @@ func NewMethodNotFoundError(method string) *MCPError {
 
 func NewInvalidParamsError(data interface{}) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCInvalidParams,
+		Code:    protocol.ErrCodeInvalidParams,
 		Message: "Invalid params",
 		Data:    data,
 	}
@@ -96,7 +79,7 @@ func NewInvalidParamsError(data interface{}) *MCPError {
 
 func NewInternalError(data interface{}) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCInternalError,
+		Code:    protocol.ErrCodeInternalError,
 		Message: "Internal error",
 		Data:    data,
 	}
@@ -104,7 +87,7 @@ func NewInternalError(data interface{}) *MCPError {
 
 func NewServerError(data interface{}) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCServerError,
+		Code:    protocol.ErrCodeServerError,
 		Message: "Server error",
 		Data:    data,
 	}
@@ -112,14 +95,14 @@ func NewServerError(data interface{}) *MCPError {
 
 func NewSessionRequiredError() *MCPError {
 	return &MCPError{
-		Code:    JSONRPCSessionRequired,
+		Code:    protocol.ErrCodeSessionRequired,
 		Message: "Session ID required",
 	}
 }
 
 func NewInvalidSessionError(sessionID string) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCInvalidSession,
+		Code:    protocol.ErrCodeInvalidSession,
 		Message: "Invalid session ID",
 		Data:    map[string]string{"sessionId": sessionID},
 	}
@@ -127,7 +110,7 @@ func NewInvalidSessionError(sessionID string) *MCPError {
 
 func NewConnectionLimitError(limit int) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCConnectionLimit,
+		Code:    protocol.ErrCodeConnectionLimit,
 		Message: "Connection limit exceeded",
 		Data:    map[string]int{"limit": limit},
 	}
@@ -135,7 +118,7 @@ func NewConnectionLimitError(limit int) *MCPError {
 
 func NewRequestTimeoutError(timeout string) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCRequestTimeout,
+		Code:    protocol.ErrCodeRequestTimeout,
 		Message: "Request timeout",
 		Data:    map[string]string{"timeout": timeout},
 	}
@@ -143,21 +126,21 @@ func NewRequestTimeoutError(timeout string) *MCPError {
 
 func NewServerBusyError() *MCPError {
 	return &MCPError{
-		Code:    JSONRPCServerBusy,
+		Code:    protocol.ErrCodeServerBusy,
 		Message: "Server busy",
 	}
 }
 
 func NewUpgradeNotAllowedError() *MCPError {
 	return &MCPError{
-		Code:    JSONRPCUpgradeNotAllowed,
+		Code:    protocol.ErrCodeUpgradeNotAllowed,
 		Message: "SSE upgrade not allowed",
 	}
 }
 
 func NewInvalidUpgradeError(reason string) *MCPError {
 	return &MCPError{
-		Code:    JSONRPCInvalidUpgrade,
+		Code:    protocol.ErrCodeInvalidUpgrade,
 		Message: "Invalid upgrade request",
 		Data:    map[string]string{"reason": reason},
 	}
@@ -196,8 +179,9 @@ func (e *ErrorResponseWriter) WriteError(mcpErr *MCPError, requestID interface{}
 	}
 
 	if err := json.NewEncoder(e.writer).Encode(response); err != nil {
-		// Log error but don't fail the response
-		e.writer.WriteHeader(http.StatusInternalServerError)
+		// Log error but don't fail the response, as headers are already sent
+		// TODO: Add proper logging here when logger is available
+		_ = err // Prevent unused variable warning
 	}
 }
 
@@ -210,29 +194,29 @@ func (e *ErrorResponseWriter) WriteHTTPError(mcpErr *MCPError) {
 // getHTTPStatusFromJSONRPCCode maps JSON-RPC error codes to HTTP status codes.
 func (e *ErrorResponseWriter) getHTTPStatusFromJSONRPCCode(code int) int {
 	switch code {
-	case JSONRPCParseError:
+	case protocol.ErrCodeParseError:
 		return http.StatusBadRequest
-	case JSONRPCInvalidRequest:
+	case protocol.ErrCodeInvalidRequest:
 		return http.StatusBadRequest
-	case JSONRPCMethodNotFound:
+	case protocol.ErrCodeMethodNotFound:
 		return http.StatusNotFound
-	case JSONRPCInvalidParams:
+	case protocol.ErrCodeInvalidParams:
 		return http.StatusBadRequest
-	case JSONRPCInternalError:
+	case protocol.ErrCodeInternalError:
 		return http.StatusInternalServerError
-	case JSONRPCSessionRequired:
+	case protocol.ErrCodeSessionRequired:
 		return http.StatusBadRequest
-	case JSONRPCInvalidSession:
+	case protocol.ErrCodeInvalidSession:
 		return http.StatusUnauthorized
-	case JSONRPCConnectionLimit:
+	case protocol.ErrCodeConnectionLimit:
 		return http.StatusTooManyRequests
-	case JSONRPCRequestTimeout:
+	case protocol.ErrCodeRequestTimeout:
 		return http.StatusGatewayTimeout
-	case JSONRPCServerBusy:
+	case protocol.ErrCodeServerBusy:
 		return http.StatusServiceUnavailable
-	case JSONRPCUpgradeNotAllowed:
+	case protocol.ErrCodeUpgradeNotAllowed:
 		return http.StatusNotImplemented
-	case JSONRPCInvalidUpgrade:
+	case protocol.ErrCodeInvalidUpgrade:
 		return http.StatusBadRequest
 	default:
 		// Default server error range (-32000 to -32099)

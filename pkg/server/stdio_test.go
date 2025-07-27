@@ -251,7 +251,7 @@ func TestHandleSpecificError(t *testing.T) {
 		{
 			name:     "Context deadline exceeded",
 			err:      context.DeadlineExceeded,
-			expected: protocol.ErrCodeServerTimeout,
+			expected: protocol.ErrCodeRequestTimeout,
 		},
 		{
 			name:     "Context canceled",
@@ -435,7 +435,7 @@ func TestProcessMessageTimeout(t *testing.T) {
 		// Check the result
 		result := <-resultChan
 		assert.NotNil(t, result.Error)
-		assert.Equal(t, protocol.ErrCodeServerTimeout, result.Error.Code)
+		assert.Equal(t, protocol.ErrCodeRequestTimeout, result.Error.Code)
 	case <-testCtx.Done():
 		t.Fatal("Test timed out waiting for error message")
 	}

@@ -119,8 +119,8 @@ func TestSessionManager(t *testing.T) {
 		// Validate non-existent session
 		if err := sm.ValidateSession("non-existent"); err == nil {
 			t.Error("ValidateSession() for non-existent session should return error")
-		} else if err.Code != JSONRPCInvalidSession {
-			t.Errorf("ValidateSession() error code = %d, want %d", err.Code, JSONRPCInvalidSession)
+		} else if err.Code != protocol.ErrCodeInvalidSession {
+			t.Errorf("ValidateSession() error code = %d, want %d", err.Code, protocol.ErrCodeInvalidSession)
 		}
 	})
 

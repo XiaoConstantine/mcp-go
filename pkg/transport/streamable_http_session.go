@@ -499,21 +499,28 @@ func (sm *SessionManager) cleanupExpiredSessions() {
 		}
 
 		// Check for expired pending requests
+		var expiredRequestIDs []protocol.RequestID
 		for requestID, pendingReq := range session.PendingRequests {
 			if now.After(pendingReq.Timeout) {
-				session.mu.RUnlock()
-				session.mu.Lock()
-				if pendingReq.Cancel != nil {
-					pendingReq.Cancel()
-				}
-				delete(session.PendingRequests, requestID)
-				expiredRequests++
-				session.mu.Unlock()
-				session.mu.RLock()
+				expiredRequestIDs = append(expiredRequestIDs, requestID)
 			}
 		}
-
 		session.mu.RUnlock()
+		
+		// Delete expired requests with write lock
+		if len(expiredRequestIDs) > 0 {
+			session.mu.Lock()
+			for _, requestID := range expiredRequestIDs {
+				if pendingReq, exists := session.PendingRequests[requestID]; exists {
+					if pendingReq.Cancel != nil {
+						pendingReq.Cancel()
+					}
+					delete(session.PendingRequests, requestID)
+					expiredRequests++
+				}
+			}
+			session.mu.Unlock()
+		}
 	}
 	sm.sessionsMu.RUnlock()
 

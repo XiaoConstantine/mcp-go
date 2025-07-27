@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 )
 
 func TestMCPError(t *testing.T) {
@@ -17,25 +19,25 @@ func TestMCPError(t *testing.T) {
 		{
 			name:     "Parse error",
 			err:      NewParseError("invalid JSON"),
-			wantCode: JSONRPCParseError,
+			wantCode: protocol.ErrCodeParseError,
 			wantMsg:  "Parse error",
 		},
 		{
 			name:     "Invalid request",
 			err:      NewInvalidRequestError("missing method"),
-			wantCode: JSONRPCInvalidRequest,
+			wantCode: protocol.ErrCodeInvalidRequest,
 			wantMsg:  "Invalid Request",
 		},
 		{
 			name:     "Session required",
 			err:      NewSessionRequiredError(),
-			wantCode: JSONRPCSessionRequired,
+			wantCode: protocol.ErrCodeSessionRequired,
 			wantMsg:  "Session ID required",
 		},
 		{
 			name:     "Connection limit",
 			err:      NewConnectionLimitError(100),
-			wantCode: JSONRPCConnectionLimit,
+			wantCode: protocol.ErrCodeConnectionLimit,
 			wantMsg:  "Connection limit exceeded",
 		},
 	}
