@@ -59,7 +59,14 @@ const (
 	ErrCodeInvalidParams  = -32602
 	ErrCodeInternalError  = -32603
 
-	// Custom error codes.
-	ErrCodeServerTimeout = -32000
-	ErrCodeShuttingDown  = -32001
+	// Server error codes (-32000 to -32099 are reserved for implementation-defined server-errors).
+	ErrCodeServerError       = -32000 // Generic server error
+	ErrCodeSessionRequired   = -32001 // Session ID required  
+	ErrCodeInvalidSession    = -32002 // Invalid session ID
+	ErrCodeConnectionLimit   = -32003 // Connection limit exceeded
+	ErrCodeRequestTimeout    = -32004 // Request timeout
+	ErrCodeServerBusy        = -32005 // Server busy
+	ErrCodeUpgradeNotAllowed = -32006 // SSE upgrade not allowed
+	ErrCodeInvalidUpgrade    = -32007 // Invalid upgrade request
+	ErrCodeShuttingDown      = -32008 // Server shutting down
 )

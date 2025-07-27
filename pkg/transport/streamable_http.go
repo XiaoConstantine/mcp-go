@@ -1131,7 +1131,7 @@ func (t *StreamableHTTPTransport) processBatchRequest(msg *protocol.Message, req
 		// Processed successfully
 	default:
 		// Message channel is full, create an error response
-		return t.createBatchErrorResponse(*msg.ID, -32000, "Server busy")
+		return t.createBatchErrorResponse(*msg.ID, protocol.ErrCodeServerBusy, "Server busy")
 	}
 
 	// Wait for the response with a timeout
@@ -1146,7 +1146,7 @@ func (t *StreamableHTTPTransport) processBatchRequest(msg *protocol.Message, req
 	select {
 	case <-ctx.Done():
 		// Timeout or context cancelled
-		return t.createBatchErrorResponse(*msg.ID, -32000, "Request timeout")
+		return t.createBatchErrorResponse(*msg.ID, protocol.ErrCodeRequestTimeout, "Request timeout")
 
 	case resp := <-respCh:
 		// Got a response
@@ -1154,7 +1154,7 @@ func (t *StreamableHTTPTransport) processBatchRequest(msg *protocol.Message, req
 			return resp
 		} else {
 			// This shouldn't happen, but just in case
-			return t.createBatchErrorResponse(*msg.ID, -32000, "No response received")
+			return t.createBatchErrorResponse(*msg.ID, protocol.ErrCodeServerError, "No response received")
 		}
 	}
 }

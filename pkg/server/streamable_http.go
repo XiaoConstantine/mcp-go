@@ -36,6 +36,11 @@ type StreamableHTTPServer struct {
 	// Context and cancellation for shutdown coordination
 	ctx        context.Context
 	cancelFunc context.CancelFunc
+
+	// Worker pool for handling messages
+	messageQueue chan *protocol.Message
+	workerPool   sync.WaitGroup
+	maxWorkers   int
 }
 
 // StreamableHTTPServerConfig contains configuration options for the StreamableHTTP server.
@@ -62,6 +67,9 @@ type StreamableHTTPServerConfig struct {
 
 	// How often to send keepalive messages on SSE connections
 	KeepAliveInterval time.Duration
+
+	// Maximum number of worker goroutines for processing messages
+	MaxWorkers int
 }
 
 // DefaultStreamableHTTPServerConfig returns a default configuration for the server.
@@ -76,6 +84,7 @@ func DefaultStreamableHTTPServerConfig() StreamableHTTPServerConfig {
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		KeepAliveInterval: 30 * time.Second,
+		MaxWorkers:        10, // Default worker pool size
 	}
 }
 
@@ -95,14 +104,21 @@ func NewStreamableHTTPServer(mcpServer core.MCPServer, config StreamableHTTPServ
 		KeepAliveInterval: config.KeepAliveInterval,
 	}
 	
+	// Set default MaxWorkers if not specified
+	if config.MaxWorkers <= 0 {
+		config.MaxWorkers = 10
+	}
+
 	// Initialize server
 	server := &StreamableHTTPServer{
-		mcpServer:  mcpServer,
-		transport:  transport.NewStreamableHTTPTransport(transportConfig),
-		config:     config,
-		logger:     config.Logger,
-		ctx:        ctx,
-		cancelFunc: cancel,
+		mcpServer:    mcpServer,
+		transport:    transport.NewStreamableHTTPTransport(transportConfig),
+		config:       config,
+		logger:       config.Logger,
+		ctx:          ctx,
+		cancelFunc:   cancel,
+		messageQueue: make(chan *protocol.Message, config.MaxWorkers*2), // Buffer size: 2x workers
+		maxWorkers:   config.MaxWorkers,
 	}
 
 	return server
@@ -134,6 +150,9 @@ func (s *StreamableHTTPServer) Start() error {
 
 	// Start processing notifications from the MCP server
 	go s.processNotifications()
+
+	// Start worker pool for handling messages
+	s.startWorkerPool()
 
 	// Start processing messages from the transport
 	go s.processMessages()
@@ -178,6 +197,11 @@ func (s *StreamableHTTPServer) Stop() error {
 		return fmt.Errorf("error closing transport: %w", err)
 	}
 
+	// Close message queue and wait for workers to finish
+	close(s.messageQueue)
+	s.workerPool.Wait()
+	s.logger.Debug("All worker goroutines have stopped")
+
 	// Signal the MCP server to shut down
 	if err := s.mcpServer.Shutdown(ctx); err != nil {
 		return fmt.Errorf("error shutting down MCP server: %w", err)
@@ -219,6 +243,29 @@ func (s *StreamableHTTPServer) processNotifications() {
 	}
 }
 
+// startWorkerPool initializes and starts the worker pool for handling messages.
+func (s *StreamableHTTPServer) startWorkerPool() {
+	for i := 0; i < s.maxWorkers; i++ {
+		s.workerPool.Add(1)
+		go func(workerID int) {
+			defer s.workerPool.Done()
+			s.logger.Debug("Worker %d started", workerID)
+			
+			for {
+				select {
+				case <-s.ctx.Done():
+					s.logger.Debug("Worker %d stopping due to context cancellation", workerID)
+					return
+				case msg := <-s.messageQueue:
+					if msg != nil {
+						s.handleMessage(msg)
+					}
+				}
+			}
+		}(i)
+	}
+}
+
 // processMessages continuously receives messages from the transport and processes them.
 func (s *StreamableHTTPServer) processMessages() {
 	for {
@@ -236,8 +283,18 @@ func (s *StreamableHTTPServer) processMessages() {
 			continue
 		}
 		
-		// Process the message with the MCP server
-		go s.handleMessage(msg)
+		// Queue the message for worker pool processing
+		select {
+		case s.messageQueue <- msg:
+			// Message queued successfully
+		case <-s.ctx.Done():
+			// Server is shutting down
+			s.logger.Debug("Message processing stopped due to context cancellation")
+			return
+		default:
+			// Queue is full, drop the message with warning
+			s.logger.Warn("Message queue is full, dropping message")
+		}
 	}
 }
 
@@ -283,6 +340,30 @@ func (s *StreamableHTTPServer) handleMessage(msg *protocol.Message) {
 	}
 }
 
+// ServeHTTPWithContext starts an MCP server with the Streamable HTTP transport and respects the provided context.
+func ServeHTTPWithContext(ctx context.Context, mcpServer core.MCPServer, addr string) error {
+	config := DefaultStreamableHTTPServerConfig()
+	config.ListenAddr = addr
+	
+	server := NewStreamableHTTPServer(mcpServer, config)
+	
+	// Start the server
+	if err := server.Start(); err != nil {
+		return err
+	}
+	
+	// Wait for either context cancellation or server context cancellation
+	select {
+	case <-ctx.Done():
+		// External context cancelled
+	case <-server.ctx.Done():
+		// Server's internal context cancelled
+	}
+	
+	// Shutdown the server gracefully
+	return server.Stop()
+}
+
 // ServeHTTP starts an MCP server with the Streamable HTTP transport.
 func ServeHTTP(mcpServer core.MCPServer, addr string) error {
 	config := DefaultStreamableHTTPServerConfig()
@@ -295,6 +376,9 @@ func ServeHTTP(mcpServer core.MCPServer, addr string) error {
 		return err
 	}
 	
-	// Keep the server running
-	select {}
+	// Wait for context cancellation (allows graceful shutdown)
+	<-server.ctx.Done()
+	
+	// Shutdown the server gracefully
+	return server.Stop()
 }

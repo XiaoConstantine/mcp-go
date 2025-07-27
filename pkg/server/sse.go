@@ -236,7 +236,7 @@ func (s *SSEServer) processMessage(msg *protocol.Message) {
 	select {
 	case <-ctx.Done():
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			s.enqueueError(msg.ID, protocol.ErrCodeServerTimeout,
+			s.enqueueError(msg.ID, protocol.ErrCodeRequestTimeout,
 				"Request processing timed out", nil)
 		} else if errors.Is(ctx.Err(), context.Canceled) {
 			s.enqueueError(msg.ID, protocol.ErrCodeShuttingDown,
@@ -351,7 +351,7 @@ func (s *SSEServer) handleSpecificError(id *protocol.RequestID, err error) {
 
 	// Common error types to handle
 	if errors.Is(err, context.DeadlineExceeded) {
-		code = protocol.ErrCodeServerTimeout
+		code = protocol.ErrCodeRequestTimeout
 		message = "Request processing timed out"
 	} else if errors.Is(err, context.Canceled) {
 		code = protocol.ErrCodeShuttingDown

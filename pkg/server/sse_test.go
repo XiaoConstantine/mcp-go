@@ -206,7 +206,7 @@ func TestSSEServer(t *testing.T) {
 			for {
 				select {
 				case msg := <-sseServer.messageQueue:
-					if msg.Error != nil && msg.Error.Code == protocol.ErrCodeServerTimeout {
+					if msg.Error != nil && msg.Error.Code == protocol.ErrCodeRequestTimeout {
 						timeoutCh <- true
 						return
 					}

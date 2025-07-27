@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/XiaoConstantine/mcp-go/pkg/logging"
+	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 )
 
 func TestConnectionManager(t *testing.T) {
@@ -53,8 +54,8 @@ func TestConnectionManager(t *testing.T) {
 		if conn3 != nil {
 			t.Error("RegisterConnection() expected nil for third connection")
 		}
-		if err.Code != JSONRPCConnectionLimit {
-			t.Errorf("RegisterConnection() error code = %d, want %d", err.Code, JSONRPCConnectionLimit)
+		if err.Code != protocol.ErrCodeConnectionLimit {
+			t.Errorf("RegisterConnection() error code = %d, want %d", err.Code, protocol.ErrCodeConnectionLimit)
 		}
 
 		// Check connection count
@@ -194,8 +195,8 @@ func TestConnectionManager_CheckRateLimit(t *testing.T) {
 	// Third check should fail
 	if err := cm.CheckRateLimit("conn1"); err == nil {
 		t.Error("CheckRateLimit() third check should have failed")
-	} else if err.Code != JSONRPCServerBusy {
-		t.Errorf("CheckRateLimit() error code = %d, want %d", err.Code, JSONRPCServerBusy)
+	} else if err.Code != protocol.ErrCodeServerBusy {
+		t.Errorf("CheckRateLimit() error code = %d, want %d", err.Code, protocol.ErrCodeServerBusy)
 	}
 
 	// Check for non-existent connection should pass (no rate limiting)

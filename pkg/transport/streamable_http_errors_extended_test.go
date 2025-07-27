@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/XiaoConstantine/mcp-go/pkg/protocol"
 )
 
 func TestNewMCPError(t *testing.T) {
@@ -40,8 +42,8 @@ func TestNewMethodNotFoundError(t *testing.T) {
 	method := "unknown/method"
 	err := NewMethodNotFoundError(method)
 	
-	if err.Code != JSONRPCMethodNotFound {
-		t.Errorf("Code = %d, want %d", err.Code, JSONRPCMethodNotFound)
+	if err.Code != protocol.ErrCodeMethodNotFound {
+		t.Errorf("Code = %d, want %d", err.Code, protocol.ErrCodeMethodNotFound)
 	}
 	
 	if err.Message != "Method not found" {
@@ -63,8 +65,8 @@ func TestNewInvalidParamsError(t *testing.T) {
 	data := "missing required parameter"
 	err := NewInvalidParamsError(data)
 	
-	if err.Code != JSONRPCInvalidParams {
-		t.Errorf("Code = %d, want %d", err.Code, JSONRPCInvalidParams)
+	if err.Code != protocol.ErrCodeInvalidParams {
+		t.Errorf("Code = %d, want %d", err.Code, protocol.ErrCodeInvalidParams)
 	}
 	
 	if err.Message != "Invalid params" {
@@ -81,8 +83,8 @@ func TestNewRequestTimeoutError(t *testing.T) {
 	timeout := "30s"
 	err := NewRequestTimeoutError(timeout)
 	
-	if err.Code != JSONRPCRequestTimeout {
-		t.Errorf("Code = %d, want %d", err.Code, JSONRPCRequestTimeout)
+	if err.Code != protocol.ErrCodeRequestTimeout {
+		t.Errorf("Code = %d, want %d", err.Code, protocol.ErrCodeRequestTimeout)
 	}
 	
 	if err.Message != "Request timeout" {
@@ -103,8 +105,8 @@ func TestNewRequestTimeoutError(t *testing.T) {
 func TestNewUpgradeNotAllowedError(t *testing.T) {
 	err := NewUpgradeNotAllowedError()
 	
-	if err.Code != JSONRPCUpgradeNotAllowed {
-		t.Errorf("Code = %d, want %d", err.Code, JSONRPCUpgradeNotAllowed)
+	if err.Code != protocol.ErrCodeUpgradeNotAllowed {
+		t.Errorf("Code = %d, want %d", err.Code, protocol.ErrCodeUpgradeNotAllowed)
 	}
 	
 	if err.Message != "SSE upgrade not allowed" {
@@ -116,8 +118,8 @@ func TestNewInvalidUpgradeError(t *testing.T) {
 	reason := "missing Accept header"
 	err := NewInvalidUpgradeError(reason)
 	
-	if err.Code != JSONRPCInvalidUpgrade {
-		t.Errorf("Code = %d, want %d", err.Code, JSONRPCInvalidUpgrade)
+	if err.Code != protocol.ErrCodeInvalidUpgrade {
+		t.Errorf("Code = %d, want %d", err.Code, protocol.ErrCodeInvalidUpgrade)
 	}
 	
 	if err.Message != "Invalid upgrade request" {
@@ -143,18 +145,18 @@ func TestErrorResponseWriter_getHTTPStatusFromJSONRPCCode_AllCodes(t *testing.T)
 		code           int
 		expectedStatus int
 	}{
-		{JSONRPCParseError, http.StatusBadRequest},
-		{JSONRPCInvalidRequest, http.StatusBadRequest},
-		{JSONRPCMethodNotFound, http.StatusNotFound},
-		{JSONRPCInvalidParams, http.StatusBadRequest},
-		{JSONRPCInternalError, http.StatusInternalServerError},
-		{JSONRPCSessionRequired, http.StatusBadRequest},
-		{JSONRPCInvalidSession, http.StatusUnauthorized},
-		{JSONRPCConnectionLimit, http.StatusTooManyRequests},
-		{JSONRPCRequestTimeout, http.StatusGatewayTimeout},
-		{JSONRPCServerBusy, http.StatusServiceUnavailable},
-		{JSONRPCUpgradeNotAllowed, http.StatusNotImplemented},
-		{JSONRPCInvalidUpgrade, http.StatusBadRequest},
+		{protocol.ErrCodeParseError, http.StatusBadRequest},
+		{protocol.ErrCodeInvalidRequest, http.StatusBadRequest},
+		{protocol.ErrCodeMethodNotFound, http.StatusNotFound},
+		{protocol.ErrCodeInvalidParams, http.StatusBadRequest},
+		{protocol.ErrCodeInternalError, http.StatusInternalServerError},
+		{protocol.ErrCodeSessionRequired, http.StatusBadRequest},
+		{protocol.ErrCodeInvalidSession, http.StatusUnauthorized},
+		{protocol.ErrCodeConnectionLimit, http.StatusTooManyRequests},
+		{protocol.ErrCodeRequestTimeout, http.StatusGatewayTimeout},
+		{protocol.ErrCodeServerBusy, http.StatusServiceUnavailable},
+		{protocol.ErrCodeUpgradeNotAllowed, http.StatusNotImplemented},
+		{protocol.ErrCodeInvalidUpgrade, http.StatusBadRequest},
 		{-32050, http.StatusInternalServerError}, // Server error range
 		{-1000, http.StatusInternalServerError},  // Unknown error
 	}
@@ -175,7 +177,7 @@ func TestErrorResponseWriter_WriteError_WithData(t *testing.T) {
 	errWriter := NewErrorResponseWriter(w)
 	
 	mcpErr := &MCPError{
-		Code:    JSONRPCInvalidRequest,
+		Code:    protocol.ErrCodeInvalidRequest,
 		Message: "Invalid Request",
 		Data:    map[string]string{"field": "missing"},
 	}
