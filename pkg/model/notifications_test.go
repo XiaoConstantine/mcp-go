@@ -7,6 +7,31 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestInitializedNotification(t *testing.T) {
+	// Test creating an initialized notification
+	notification := NewInitializedNotification()
+
+	if notification.Method() != "notifications/initialized" {
+		t.Errorf("Expected method notifications/initialized, got %s", notification.Method())
+	}
+
+	// Test JSON serialization
+	data, err := json.Marshal(notification)
+	if err != nil {
+		t.Fatalf("Failed to marshal InitializedNotification: %v", err)
+	}
+
+	// Test JSON deserialization
+	var decoded InitializedNotification
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Failed to unmarshal InitializedNotification: %v", err)
+	}
+
+	if !cmp.Equal(notification, &decoded) {
+		t.Errorf("Notification doesn't match after round-trip serialization:\n%s", cmp.Diff(notification, &decoded))
+	}
+}
+
 func TestCancelledNotification(t *testing.T) {
 	// Test creating a cancelled notification with both request ID and reason
 	requestID := "test-request-123"

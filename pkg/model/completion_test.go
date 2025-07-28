@@ -114,6 +114,178 @@ func TestCompleteRequestWithResourceRef(t *testing.T) {
 	}
 }
 
+func TestCompleteRequestValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		request *CompleteRequest
+		wantErr bool
+	}{
+		{
+			name: "valid request with prompt reference",
+			request: NewCompleteRequest("arg1", "test", PromptReference{
+				Type: "ref/prompt",
+				Name: "test-prompt",
+			}),
+			wantErr: false,
+		},
+		{
+			name: "valid request with resource reference",
+			request: NewCompleteRequest("arg1", "test", ResourceReference{
+				Type: "ref/resource",
+				URI:  "file://test.txt",
+			}),
+			wantErr: false,
+		},
+		{
+			name: "empty argument name",
+			request: &CompleteRequest{
+				Method: "completion/complete",
+				Params: struct {
+					Argument struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"argument"`
+					Ref interface{} `json:"ref"`
+				}{
+					Argument: struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					}{
+						Name:  "", // Empty name
+						Value: "test",
+					},
+					Ref: PromptReference{Name: "test"},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "nil reference",
+			request: &CompleteRequest{
+				Method: "completion/complete",
+				Params: struct {
+					Argument struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"argument"`
+					Ref interface{} `json:"ref"`
+				}{
+					Argument: struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					}{
+						Name:  "test",
+						Value: "test",
+					},
+					Ref: nil, // Nil reference
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid reference type",
+			request: &CompleteRequest{
+				Method: "completion/complete",
+				Params: struct {
+					Argument struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"argument"`
+					Ref interface{} `json:"ref"`
+				}{
+					Argument: struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					}{
+						Name:  "test",
+						Value: "test",
+					},
+					Ref: "invalid reference type", // Invalid type
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "prompt reference with empty name",
+			request: &CompleteRequest{
+				Method: "completion/complete",
+				Params: struct {
+					Argument struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"argument"`
+					Ref interface{} `json:"ref"`
+				}{
+					Argument: struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					}{
+						Name:  "test",
+						Value: "test",
+					},
+					Ref: PromptReference{Name: ""}, // Empty prompt name
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "resource reference with empty URI",
+			request: &CompleteRequest{
+				Method: "completion/complete",
+				Params: struct {
+					Argument struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"argument"`
+					Ref interface{} `json:"ref"`
+				}{
+					Argument: struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					}{
+						Name:  "test",
+						Value: "test",
+					},
+					Ref: ResourceReference{URI: ""}, // Empty resource URI
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "wrong method",
+			request: &CompleteRequest{
+				Method: "wrong/method",
+				Params: struct {
+					Argument struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"argument"`
+					Ref interface{} `json:"ref"`
+				}{
+					Argument: struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					}{
+						Name:  "test",
+						Value: "test",
+					},
+					Ref: PromptReference{Name: "test"},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCompleteRequest(tt.request)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateCompleteRequest() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestCompleteResultValidation(t *testing.T) {
 	tests := []struct {
 		name    string

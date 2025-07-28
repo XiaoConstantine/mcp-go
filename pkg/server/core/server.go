@@ -127,6 +127,7 @@ func (s *Server) IsInitialized() bool {
 // Shutdown initiates server shutdown process.
 func (s *Server) Shutdown(ctx context.Context) error {
 	var err error
+	var errMu sync.Mutex
 
 	s.shutdownOnce.Do(func() {
 
@@ -145,7 +146,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			defer wg.Done()
 			if resErr := s.resourceManager.Shutdown(shutdownCtx); resErr != nil {
 				s.logger.Error("Error during resource manager shutdown: %v", resErr)
-				err = resErr // Capture the first error
+				errMu.Lock()
+				if err == nil { // Only capture the first error
+					err = resErr
+				}
+				errMu.Unlock()
 			}
 		}()
 		// Clean up prompt manager if needed
@@ -169,7 +174,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 			s.logger.Info("MCP Server shutdown complete")
 		case <-shutdownCtx.Done():
 			s.logger.Info("MCP Server shutdown timed out")
-			err = shutdownCtx.Err()
+			errMu.Lock()
+			if err == nil { // Only capture timeout error if no other error occurred
+				err = shutdownCtx.Err()
+			}
+			errMu.Unlock()
 		}
 		// Final step: drain the notification channel to prevent deadlocks
 		// Use a separate goroutine to avoid blocking if channel is full
@@ -200,6 +209,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		}()
 	})
 
+	errMu.Lock()
+	defer errMu.Unlock()
 	return err
 }
 

@@ -306,3 +306,214 @@ func setupTestDirectory(t *testing.T) (string, func()) {
 		os.RemoveAll(tempDir)
 	}
 }
+
+func TestManagerShutdown(t *testing.T) {
+	manager := NewManager()
+	
+	// Create a temporary directory
+	tempDir, cleanupFunc := setupTestDirectory(t)
+	defer cleanupFunc()
+	
+	// Add a root
+	root := models.Root{
+		URI:  "file://" + tempDir,
+		Name: "TestRoot",
+	}
+	err := manager.AddRoot(root)
+	require.NoError(t, err)
+	
+	// Create a subscription to test shutdown
+	sub, err := manager.Subscribe("file://" + filepath.Join(tempDir, "test1.txt"))
+	require.NoError(t, err)
+	require.NotNil(t, sub)
+	
+	// Test shutdown - this should execute the shutdown code path
+	ctx := context.Background()
+	err = manager.Shutdown(ctx)
+	assert.NoError(t, err)
+	
+	// The shutdown method was called successfully (coverage achieved)
+}
+
+func TestManagerShutdownWithTimeout(t *testing.T) {
+	manager := NewManager()
+	
+	// Create a context that will timeout quickly
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+	
+	// Wait for context to timeout
+	time.Sleep(5 * time.Millisecond)
+	
+	// Test shutdown with already timed out context
+	err := manager.Shutdown(ctx)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "deadline exceeded")
+}
+
+func TestCloseAllSubscriptions(t *testing.T) {
+	manager := NewManager()
+	
+	// Create a temporary directory
+	tempDir, cleanupFunc := setupTestDirectory(t)
+	defer cleanupFunc()
+	
+	// Add a root
+	root := models.Root{
+		URI:  "file://" + tempDir,
+		Name: "TestRoot", 
+	}
+	err := manager.AddRoot(root)
+	require.NoError(t, err)
+	
+	// Create multiple subscriptions
+	uri1 := "file://" + filepath.Join(tempDir, "test1.txt")
+	uri2 := "file://" + filepath.Join(tempDir, "test2.json")
+	
+	sub1, err := manager.Subscribe(uri1)
+	require.NoError(t, err)
+	sub2, err := manager.Subscribe(uri2)
+	require.NoError(t, err)
+	
+	require.NotNil(t, sub1)
+	require.NotNil(t, sub2)
+	
+	// Manually call closeAllSubscriptions to test it directly
+	// This achieves coverage of the closeAllSubscriptions method
+	manager.closeAllSubscriptions()
+	
+	// Verify the subscribers map was cleared (coverage achieved)
+	manager.subMu.Lock()
+	assert.Empty(t, manager.subscribers, "Subscribers map should be cleared")
+	manager.subMu.Unlock()
+}
+
+func TestDetectMimeType(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected string
+	}{
+		{
+			name:     "text file",
+			path:     "test.txt",
+			expected: "text/plain",
+		},
+		{
+			name:     "json file",
+			path:     "data.json",
+			expected: "application/json",
+		},
+		{
+			name:     "markdown file",
+			path:     "readme.md",
+			expected: "text/markdown",
+		},
+		{
+			name:     "unknown extension",
+			path:     "file.unknown",
+			expected: "text/plain", // fallback
+		},
+		{
+			name:     "no extension",
+			path:     "filename",
+			expected: "text/plain", // fallback
+		},
+		{
+			name:     "uppercase extension",
+			path:     "FILE.TXT",
+			expected: "text/plain",
+		},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detectMimeType(tt.path)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestScanRootErrorHandling(t *testing.T) {
+	manager := NewManager()
+	
+	// Test with non-existent directory
+	root := models.Root{
+		URI:  "file:///non/existent/path",
+		Name: "NonExistentRoot",
+	}
+	
+	err := manager.scanRoot(root)
+	assert.Error(t, err)
+}
+
+func TestGetCompletionsEdgeCases(t *testing.T) {
+	manager := NewManager()
+	
+	// Test with non-existent resource
+	completions, hasMore, total, err := manager.GetCompletions("file:///non/existent", "arg", "prefix")
+	assert.Error(t, err)
+	assert.Nil(t, completions)
+	assert.False(t, hasMore)
+	assert.Nil(t, total)
+	
+	// Create a temporary directory with test files
+	tempDir, cleanupFunc := setupTestDirectory(t)
+	defer cleanupFunc()
+	
+	// Add root and scan
+	root := models.Root{
+		URI:  "file://" + tempDir,
+		Name: "TestRoot",
+	}
+	err = manager.AddRoot(root)
+	require.NoError(t, err)
+	
+	// Test with empty prefix
+	testFileURI := "file://" + filepath.Join(tempDir, "test1.txt")
+	completions, hasMore, total, err = manager.GetCompletions(testFileURI, "arg", "")
+	require.NoError(t, err)
+	assert.NotNil(t, completions)
+	assert.False(t, hasMore)
+	assert.NotNil(t, total)
+}
+
+func TestSubscriptionCloseSafetyMultiple(t *testing.T) {
+	manager := NewManager()
+	
+	// Create a temporary directory
+	tempDir, cleanupFunc := setupTestDirectory(t)
+	defer cleanupFunc()
+	
+	// Add a root
+	root := models.Root{
+		URI:  "file://" + tempDir,
+		Name: "TestRoot",
+	}
+	err := manager.AddRoot(root)
+	require.NoError(t, err)
+	
+	// Create multiple subscriptions to the same URI
+	uri := "file://" + filepath.Join(tempDir, "test1.txt")
+	
+	sub1, err := manager.Subscribe(uri)
+	require.NoError(t, err)
+	sub2, err := manager.Subscribe(uri)
+	require.NoError(t, err)
+	sub3, err := manager.Subscribe(uri)
+	require.NoError(t, err)
+	
+	require.NotNil(t, sub1)
+	require.NotNil(t, sub2)
+	require.NotNil(t, sub3)
+	
+	// Close individual subscriptions
+	sub1.Close()
+	sub2.Close()
+	sub3.Close()
+	
+	// Verify they can be closed multiple times without panic
+	sub1.Close()
+	sub2.Close()
+	sub3.Close()
+}

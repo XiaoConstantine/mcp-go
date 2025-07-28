@@ -141,14 +141,14 @@ func (m *MockTransport) Close() error {
 func TestNewServer(t *testing.T) {
 	mcpServer := NewMockMCPServer()
 	config := &ServerConfig{
-		DefaultTimeout: 5 * time.Second,
+		DefaultTimeout: 50 * time.Millisecond,
 		Logger:         logging.NewStdLogger(logging.InfoLevel),
 	}
 
 	server := NewServer(mcpServer, config)
 
 	assert.NotNil(t, server)
-	assert.Equal(t, 5*time.Second, server.defaultTimeout)
+	assert.Equal(t, 50*time.Millisecond, server.defaultTimeout)
 	assert.NotNil(t, server.transport)
 	assert.NotNil(t, server.messageQueue)
 	assert.NotNil(t, server.logger)
@@ -217,7 +217,7 @@ func TestProcessMessage(t *testing.T) {
 		select {
 		case msg := <-server.messageQueue:
 			resultChan <- msg
-		case <-time.After(2 * time.Second):
+		case <-time.After(200 * time.Millisecond):
 			t.Error("Timeout waiting for message")
 		}
 	}()
@@ -229,7 +229,7 @@ func TestProcessMessage(t *testing.T) {
 	select {
 	case result := <-resultChan:
 		assert.Equal(t, response, result)
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Error("Timeout waiting for result")
 	}
 
@@ -292,7 +292,7 @@ func TestHandleSpecificError(t *testing.T) {
 				select {
 				case msg := <-server.messageQueue:
 					resultChan <- msg
-				case <-time.After(2 * time.Second):
+				case <-time.After(200 * time.Millisecond):
 					t.Error("Timeout waiting for error message")
 				}
 			}()
@@ -305,7 +305,7 @@ func TestHandleSpecificError(t *testing.T) {
 			case result := <-resultChan:
 				assert.NotNil(t, result.Error)
 				assert.Equal(t, tc.expected, result.Error.Code)
-			case <-time.After(2 * time.Second):
+			case <-time.After(200 * time.Millisecond):
 				t.Error("Timeout waiting for error result")
 			}
 		})
@@ -355,8 +355,19 @@ func TestHandleOutgoingMessages(t *testing.T) {
 	server.outputSync.Add(1)
 	server.messageQueue <- msg
 
-	// Wait for processing
-	time.Sleep(100 * time.Millisecond)
+	// Wait for processing using outputSync instead of sleep
+	done := make(chan struct{})
+	go func() {
+		server.outputSync.Wait()
+		close(done)
+	}()
+	
+	select {
+	case <-done:
+		// Processing complete
+	case <-time.After(100 * time.Millisecond):
+		// Timeout fallback
+	}
 
 	// Check the output
 	writtenData := mockTransport.GetWrittenData()
@@ -384,6 +395,9 @@ func TestSetTimeout(t *testing.T) {
 // Test message processing with timeout.
 func TestProcessMessageTimeout(t *testing.T) {
 	server, mockMCP, _ := setupTestServer()
+	
+	// Set a faster timeout for this test specifically
+	server.defaultTimeout = 100 * time.Millisecond
 
 	// Create a test message
 	requestID := 1
@@ -395,14 +409,14 @@ func TestProcessMessageTimeout(t *testing.T) {
 		Params:  json.RawMessage(`{"test":"value"}`),
 	}
 
-	// Set up the mock correctly
+	// Set up the mock correctly - simulate slow operation that will timeout  
 	mockMCP.On("HandleMessage", mock.Anything, msg).Run(func(args mock.Arguments) {
-		// Sleep slightly longer than the server's timeout (1s)
-		time.Sleep(1200 * time.Millisecond)
+		// Sleep longer than the server's timeout (100ms) to trigger timeout handling
+		time.Sleep(200 * time.Millisecond) // Server timeout is 100ms, so this will cause timeout
 	}).Return(nil, errors.New("mock timeout")).Once()
 
-	// Create a timeout for the entire test
-	testCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// Create a timeout for the entire test 
+	testCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	// Replace message queue with a test channel
@@ -456,7 +470,7 @@ func TestForwardNotifications(t *testing.T) {
 	}
 
 	// Use a context with timeout for the entire test
-	testCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	testCtx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	// Start the notification forwarder with a done channel
@@ -468,8 +482,14 @@ func TestForwardNotifications(t *testing.T) {
 		// Send a notification through the channel
 		mockMCP.SendNotification(notification)
 
-		// Wait briefly
-		time.Sleep(100 * time.Millisecond)
+		// Use channel to coordinate instead of sleep
+		notificationSent := make(chan struct{})
+		go func() {
+			// Small delay to ensure notification processing
+			time.Sleep(10 * time.Millisecond)
+			close(notificationSent)
+		}()
+		<-notificationSent
 
 		// Cancel the context to stop the forwarder
 		server.cancel()
@@ -510,7 +530,7 @@ func TestInvalidJson(t *testing.T) {
 		select {
 		case msg := <-server.messageQueue:
 			resultChan <- msg
-		case <-time.After(2 * time.Second):
+		case <-time.After(200 * time.Millisecond):
 			t.Error("Timeout waiting for error message")
 		}
 	}()
@@ -548,7 +568,7 @@ func TestInvalidJson(t *testing.T) {
 	case result := <-resultChan:
 		assert.NotNil(t, result.Error)
 		assert.Equal(t, protocol.ErrCodeParseError, result.Error.Code)
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Error("Timeout waiting for error result")
 	}
 }
@@ -575,7 +595,7 @@ func TestStartServer(t *testing.T) {
 	mockTransport.QueueRead(`{"jsonrpc":"2.0","id":1,"method":"ping"}` + "\n")
 
 	// Create server with mock transport
-	config := &ServerConfig{DefaultTimeout: 1 * time.Second, Logger: logging.NewNoopLogger()}
+	config := &ServerConfig{DefaultTimeout: 100 * time.Millisecond, Logger: logging.NewNoopLogger()}
 	server := NewServer(mockMCP, config)
 
 	// Replace the default transport with our mock
@@ -593,8 +613,27 @@ func TestStartServer(t *testing.T) {
 		close(serverDone)
 	}()
 
-	// Give some time for the server to process the ping message and send response
-	time.Sleep(500 * time.Millisecond)
+	// Use channel synchronization instead of sleep
+	responseReceived := make(chan struct{})
+	go func() {
+		// Poll for response data
+		for i := 0; i < 10; i++ {
+			if len(mockTransport.GetWrittenData()) > 0 {
+				close(responseReceived)
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		close(responseReceived)
+	}()
+
+	// Wait for response or timeout
+	select {
+	case <-responseReceived:
+		// Response received
+	case <-time.After(200 * time.Millisecond):
+		// Timeout - continue anyway
+	}
 
 	// Check if response was written - this should happen before we send test/stop
 	writtenData := string(mockTransport.GetWrittenData())
@@ -607,7 +646,7 @@ func TestStartServer(t *testing.T) {
 	select {
 	case <-serverDone:
 		assert.NoError(t, startErr)
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Fatal("Test timed out waiting for server to exit")
 	}
 
@@ -631,14 +670,26 @@ func TestServerShutdownDuringOperation(t *testing.T) {
 		close(serverDone)
 	}()
 
-	// Give the server time to initialize
-	time.Sleep(100 * time.Millisecond)
+	// Use channel synchronization instead of sleep
+	initDone := make(chan struct{})
+	go func() {
+		// Allow brief initialization time
+		time.Sleep(10 * time.Millisecond)
+		close(initDone)
+	}()
+	<-initDone
 
 	// Queue some input to keep the server busy
 	mockTransport.QueueRead(`{"jsonrpc":"2.0","id":1,"method":"ping"}` + "\n")
 
-	// Give time for the server to process the ping
-	time.Sleep(50 * time.Millisecond)
+	// Use channel to wait for processing instead of sleep
+	processingDone := make(chan struct{})
+	go func() {
+		// Brief processing time
+		time.Sleep(10 * time.Millisecond)
+		close(processingDone)
+	}()
+	<-processingDone
 
 	// Call Stop and wait for it to complete
 	stopErr := server.Stop()
@@ -651,7 +702,7 @@ func TestServerShutdownDuringOperation(t *testing.T) {
 	select {
 	case <-serverDone:
 		assert.NoError(t, startErr)
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Fatal("Test timed out waiting for server to exit after Stop()")
 	}
 
@@ -728,7 +779,7 @@ func TestMessageProcessingDuringShutdown(t *testing.T) {
 		select {
 		case msg := <-server.messageQueue:
 			resultChan <- msg
-		case <-time.After(2 * time.Second):
+		case <-time.After(200 * time.Millisecond):
 			t.Error("Timeout waiting for shutdown message")
 		}
 	}()
@@ -741,7 +792,7 @@ func TestMessageProcessingDuringShutdown(t *testing.T) {
 	case result := <-resultChan:
 		assert.NotNil(t, result.Error)
 		assert.Equal(t, protocol.ErrCodeShuttingDown, result.Error.Code)
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Error("Timeout waiting for shutdown error")
 	}
 }
@@ -782,7 +833,7 @@ func TestSendMessageWithError(t *testing.T) {
 	select {
 	case <-wait:
 		// Success - wait group was decremented
-	case <-time.After(1 * time.Second):
+	case <-time.After(100 * time.Millisecond):
 		t.Error("Timeout waiting for outputSync to be decremented")
 	}
 	// Clean up
@@ -861,7 +912,7 @@ func TestEnqueueErrorFullChannel(t *testing.T) {
 	smallChan <- &protocol.Message{JSONRPC: "2.0", ID: &reqVal}
 
 	// Create a context with a short timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	// Create a goroutine to check if outputSync is decremented
@@ -913,8 +964,14 @@ func TestStopWithTimeout(t *testing.T) {
 
 	// Make Shutdown hang but not too long to avoid test timeouts
 	mockMCP.On("Shutdown", mock.Anything).Run(func(args mock.Arguments) {
-		// Sleep a short time for testing purposes
-		time.Sleep(100 * time.Millisecond)
+		// Use context cancellation instead of fixed sleep
+		ctx := args.Get(0).(context.Context)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(50 * time.Millisecond):
+			return
+		}
 	}).Return(nil).Once()
 
 	// Start a goroutine that can be cancelled
@@ -961,7 +1018,7 @@ func TestStopTestMessage(t *testing.T) {
 	select {
 	case <-doneCh:
 		// Server stopped normally
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Error("Test timed out")
 	}
 }

@@ -1024,6 +1024,328 @@ func TestSendMultipleNotifications(t *testing.T) {
 	}
 }
 
+func TestManagerGetters(t *testing.T) {
+	server := createTestServer()
+
+	// Test ToolManager getter
+	toolsManager := server.ToolManager()
+	assert.NotNil(t, toolsManager)
+	assert.Equal(t, server.toolsManager, toolsManager)
+
+	// Test PromptManager getter
+	promptManager := server.PromptManager()
+	assert.NotNil(t, promptManager)
+	assert.Equal(t, server.promptManager, promptManager)
+
+	// Test ResourceManager getter
+	resourceManager := server.ResourceManager()
+	assert.NotNil(t, resourceManager)
+	assert.Equal(t, server.resourceManager, resourceManager)
+}
+
+func TestSetAndGetInstructions(t *testing.T) {
+	server := createTestServer()
+
+	// Test default instructions
+	defaultInstructions := server.GetInstructions()
+	assert.NotEmpty(t, defaultInstructions)
+	assert.Contains(t, defaultInstructions, "MCP Server")
+
+	// Test setting custom instructions
+	customInstructions := "Custom server instructions for testing"
+	server.SetInstructions(customInstructions)
+
+	retrievedInstructions := server.GetInstructions()
+	assert.Equal(t, customInstructions, retrievedInstructions)
+
+	// Test setting empty instructions
+	server.SetInstructions("")
+	emptyInstructions := server.GetInstructions()
+	assert.Equal(t, "", emptyInstructions)
+}
+
+func TestServerShutdown(t *testing.T) {
+	server := createTestServer()
+	
+	// Add some test data
+	tempDir, cleanupFunc := setupTestResources(t)
+	defer cleanupFunc()
+
+	root := models.Root{
+		URI:  "file://" + tempDir,
+		Name: "test-root",
+	}
+	err := server.AddRoot(root)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test shutdown before initialization
+	err = server.Shutdown(ctx)
+	assert.NoError(t, err)
+
+	// Initialize the server
+	initializeServer(t, server)
+
+	// Test normal shutdown
+	err = server.Shutdown(ctx)
+	assert.NoError(t, err)
+
+	// Test shutdown multiple times (should be idempotent)
+	err = server.Shutdown(ctx)
+	assert.NoError(t, err)
+}
+
+func TestServerShutdownWithTimeout(t *testing.T) {
+	server := createTestServer()
+	initializeServer(t, server)
+
+	// Create a context with a very short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+
+	// Let the context timeout first
+	time.Sleep(10 * time.Millisecond)
+
+	// Shutdown should handle timeout gracefully
+	err := server.Shutdown(ctx)
+	// May return timeout error, but should not panic
+	if err != nil {
+		assert.Contains(t, err.Error(), "context")
+	}
+}
+
+func TestNewServerWithOptions(t *testing.T) {
+	info := models.Implementation{
+		Name:    "CustomServer",
+		Version: "2.0.0",
+	}
+	customInstructions := "Custom instructions for testing"
+
+	options := ServerOptions{
+		Info:         info,
+		Version:      "2.0",
+		Instructions: customInstructions,
+	}
+
+	server := NewServerWithOptions(options)
+
+	assert.NotNil(t, server)
+	assert.Equal(t, info, server.info)
+	assert.Equal(t, "2.0", server.version)
+	assert.Equal(t, customInstructions, server.GetInstructions())
+	assert.NotNil(t, server.resourceManager)
+	assert.NotNil(t, server.toolsManager)
+	assert.NotNil(t, server.promptManager)
+	assert.NotNil(t, server.logManager)
+	assert.NotNil(t, server.notificationChan)
+	assert.False(t, server.initialized)
+
+	// Test with empty instructions (should get default)
+	optionsEmpty := ServerOptions{
+		Info:    info,
+		Version: "2.0",
+	}
+	serverEmpty := NewServerWithOptions(optionsEmpty)
+	instructions := serverEmpty.GetInstructions()
+	assert.Contains(t, instructions, "MCP Server 2.0")
+}
+
+func TestHandleListPrompts(t *testing.T) {
+	server := createTestServer()
+	ctx := context.Background()
+
+	// Set server as initialized
+	initializeServer(t, server)
+
+	// Create list prompts request
+	requestID := createRequestID("req-1")
+	msg := &protocol.Message{
+		JSONRPC: "2.0",
+		ID:      requestID,
+		Method:  "prompts/list",
+		Params:  json.RawMessage("{}"),
+	}
+
+	// Handle the request
+	response, err := server.HandleMessage(ctx, msg)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+
+	// Parse result
+	var result models.ListPromptsResult
+	err = json.Unmarshal(response.Result.(json.RawMessage), &result)
+	require.NoError(t, err)
+
+	// The request should succeed, and prompts should be an empty slice or nil
+	// Both are valid for an empty list
+	assert.True(t, len(result.Prompts) == 0)
+}
+
+func TestHandleGetPrompt(t *testing.T) {
+	server := createTestServer()
+	ctx := context.Background()
+
+	// Set server as initialized
+	initializeServer(t, server)
+
+	// Create get prompt request for a non-existent prompt
+	requestID := createRequestID("req-1")
+	params := struct {
+		Name      string                 `json:"name"`
+		Arguments map[string]interface{} `json:"arguments,omitempty"`
+	}{
+		Name: "nonexistent_prompt",
+	}
+
+	paramsBytes, err := json.Marshal(params)
+	require.NoError(t, err)
+
+	msg := &protocol.Message{
+		JSONRPC: "2.0",
+		ID:      requestID,
+		Method:  "prompts/get",
+		Params:  json.RawMessage(paramsBytes),
+	}
+
+	// Handle the request - should return error for non-existent prompt
+	_, err = server.HandleMessage(ctx, msg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestHandleCallTool(t *testing.T) {
+	server := createTestServer()
+	ctx := context.Background()
+
+	// Set server as initialized
+	initializeServer(t, server)
+
+	// Create call tool request for a non-existent tool
+	requestID := createRequestID("req-1")
+	params := struct {
+		Name      string                 `json:"name"`
+		Arguments map[string]interface{} `json:"arguments,omitempty"`
+	}{
+		Name: "nonexistent_tool",
+		Arguments: map[string]interface{}{
+			"param": "value",
+		},
+	}
+
+	paramsBytes, err := json.Marshal(params)
+	require.NoError(t, err)
+
+	msg := &protocol.Message{
+		JSONRPC: "2.0",
+		ID:      requestID,
+		Method:  "tools/call",
+		Params:  json.RawMessage(paramsBytes),
+	}
+
+	// Handle the request - should return a response with error result for non-existent tool
+	response, err := server.HandleMessage(ctx, msg)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+
+	// Parse result
+	var result models.CallToolResult
+	err = json.Unmarshal(response.Result.(json.RawMessage), &result)
+	require.NoError(t, err)
+
+	// Should be an error result
+	assert.True(t, result.IsError)
+	assert.NotEmpty(t, result.Content)
+
+	// Verify error message is in the content
+	// The content might be unmarshaled as a map, so we'll check the structure
+	assert.NotEmpty(t, result.Content)
+	// Just check that it's an error - detailed content verification would require
+	// more complex unmarshaling logic
+}
+
+func TestHandleGetLogger(t *testing.T) {
+	server := createTestServer()
+
+	// Test getting logger for the server
+	logger := server.GetLogger("test-component")
+	assert.NotNil(t, logger)
+
+	// Test multiple calls return different loggers for different names
+	logger1 := server.GetLogger("component1")
+	logger2 := server.GetLogger("component2")
+	assert.NotNil(t, logger1)
+	assert.NotNil(t, logger2)
+	// We can't easily compare logger instances, but we can verify they're not nil
+}
+
+func TestHandleNotificationMessages(t *testing.T) {
+	server := createTestServer()
+	ctx := context.Background()
+
+	// Set server as initialized
+	initializeServer(t, server)
+
+	// Test initialized notification
+	initNotification := &protocol.Message{
+		JSONRPC: "2.0",
+		Method:  "notifications/initialized",
+		Params:  json.RawMessage("{}"),
+	}
+
+	response, err := server.HandleMessage(ctx, initNotification)
+	assert.NoError(t, err)
+	assert.Nil(t, response) // Notifications don't return responses
+
+	// Test cancelled notification
+	cancelNotification := &protocol.Message{
+		JSONRPC: "2.0",
+		Method:  "notifications/cancelled",
+		Params:  json.RawMessage("{}"),
+	}
+
+	response, err = server.HandleMessage(ctx, cancelNotification)
+	assert.NoError(t, err)
+	assert.Nil(t, response) // Notifications don't return responses
+}
+
+func TestCreateResponse(t *testing.T) {
+	server := createTestServer()
+
+	requestID := createRequestID("test-123")
+	result := map[string]interface{}{
+		"status": "ok",
+		"data":   "test data",
+	}
+
+	// Test successful response creation
+	response, err := server.createResponse(requestID, result)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+
+	assert.Equal(t, "2.0", response.JSONRPC)
+	assert.Equal(t, requestID, response.ID)
+	assert.NotNil(t, response.Result)
+
+	// Verify the result can be unmarshaled back
+	var parsedResult map[string]interface{}
+	err = json.Unmarshal(response.Result.(json.RawMessage), &parsedResult)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", parsedResult["status"])
+	assert.Equal(t, "test data", parsedResult["data"])
+
+	// Test with nil request ID
+	response, err = server.createResponse(nil, result)
+	require.NoError(t, err)
+	assert.Nil(t, response.ID)
+
+	// Test with non-marshallable result (should error)
+	invalidResult := make(chan int) // channels can't be marshaled to JSON
+	_, err = server.createResponse(requestID, invalidResult)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to marshal response")
+}
+
 func TestChannelFullNotification(t *testing.T) {
 	// Create server with tiny notification channel
 	server := &Server{
